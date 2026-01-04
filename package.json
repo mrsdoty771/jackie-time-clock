@@ -1,0 +1,21 @@
+{
+  "name": "jackie-time-clock",
+  "version": "1.0.0",
+  "description": "Employee time clock system with manager controls",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["timeclock", "employee", "management"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "sqlite3": "^5.1.6",
+    "body-parser": "^1.20.2"
+  }
+}
+

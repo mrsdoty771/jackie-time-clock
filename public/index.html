@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Clock System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="login-page" class="page">
+        <div class="login-container">
+            <h1>Time Clock System</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="user-select">Select Your Name</label>
+                    <select id="user-select" required>
+                        <option value="">-- Select Name --</option>
+                        <option value="admin">Admin (Manager)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+            </form>
+            <div id="login-error" class="error-message"></div>
+        </div>
+    </div>
+
+    <div id="employee-page" class="page hidden">
+        <nav class="navbar">
+            <h2>Time Clock</h2>
+            <div>
+                <span id="employee-name"></span>
+                <button id="logout-btn" class="btn btn-secondary">Logout</button>
+            </div>
+        </nav>
+        
+        <div class="container">
+            <div class="punch-section">
+                <h3>Clock In/Out</h3>
+                <div class="punch-buttons">
+                    <button id="clock-in-btn" class="btn btn-success">Clock In</button>
+                    <button id="clock-out-btn" class="btn btn-danger">Clock Out</button>
+                </div>
+            </div>
+            
+            <div class="punch-section">
+                <h3>Lunch</h3>
+                <div class="punch-buttons">
+                    <button id="lunch-in-btn" class="btn btn-warning">Go to Lunch</button>
+                    <button id="lunch-out-btn" class="btn btn-info">Return from Lunch</button>
+                </div>
+            </div>
+            
+            <div class="records-section">
+                <h3>Recent Time Records</h3>
+                <div id="employee-records"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="manager-page" class="page hidden">
+        <nav class="navbar">
+            <h2>Manager Dashboard</h2>
+            <button id="manager-logout-btn" class="btn btn-secondary">Logout</button>
+        </nav>
+        
+        <div class="container">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="employees">Employees</button>
+                <button class="tab-btn" data-tab="punches">Manual Punch</button>
+                <button class="tab-btn" data-tab="reports">Reports</button>
+                <button class="tab-btn" data-tab="notes">Employee Notes</button>
+            </div>
+            
+            <!-- Employees Tab -->
+            <div id="employees-tab" class="tab-content active">
+                <div class="section-header">
+                    <h3>Employee Management</h3>
+                    <button id="add-employee-btn" class="btn btn-primary">Add Employee</button>
+                </div>
+                <div id="employees-list"></div>
+            </div>
+            
+            <!-- Manual Punch Tab -->
+            <div id="punches-tab" class="tab-content">
+                <h3>Manual Time Punch</h3>
+                <form id="manual-punch-form" class="form">
+                    <div class="form-group">
+                        <label for="punch-employee">Employee</label>
+                        <select id="punch-employee" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="punch-type">Punch Type</label>
+                        <select id="punch-type" required>
+                            <option value="clock_in">Clock In</option>
+                            <option value="clock_out">Clock Out</option>
+                            <option value="lunch_in">Lunch In</option>
+                            <option value="lunch_out">Lunch Out</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="punch-notes">Notes (optional)</label>
+                        <textarea id="punch-notes" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit Punch</button>
+                </form>
+            </div>
+            
+            <!-- Reports Tab -->
+            <div id="reports-tab" class="tab-content">
+                <h3>Weekly Reports</h3>
+                <div class="form-group">
+                    <label for="report-employee">Employee (All if not selected)</label>
+                    <select id="report-employee">
+                        <option value="">All Employees</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="report-week">Week Starting (Monday)</label>
+                    <input type="date" id="report-week" required>
+                </div>
+                <button id="generate-report-btn" class="btn btn-primary">Generate Report</button>
+                <div id="report-results"></div>
+            </div>
+            
+            <!-- Notes Tab -->
+            <div id="notes-tab" class="tab-content">
+                <div class="section-header">
+                    <h3>Employee Notes</h3>
+                    <button id="refresh-notes-btn" class="btn btn-secondary">Refresh</button>
+                </div>
+                <div id="employee-notes-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Employee Modal -->
+    <div id="add-employee-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Add Employee</h3>
+            <form id="add-employee-form">
+                <div class="form-group">
+                    <label for="emp-name">Name *</label>
+                    <input type="text" id="emp-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="emp-number">Employee Number *</label>
+                    <input type="text" id="emp-number" required>
+                </div>
+                <div class="form-group">
+                    <label for="emp-email">Email</label>
+                    <input type="email" id="emp-email">
+                </div>
+                <div class="form-group">
+                    <label for="emp-phone">Phone</label>
+                    <input type="tel" id="emp-phone">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-add-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Employee</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+    <script src="app.js"></script>
+</body>
+</html>
+

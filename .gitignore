@@ -1,0 +1,6 @@
+node_modules/
+timeclock.db
+.DS_Store
+*.log
+.env
+
