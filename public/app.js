@@ -250,16 +250,27 @@ function handleLogout() {
 
 // Employee Functions
 function handlePunch(punchType) {
+    // Get note from textarea
+    const noteTextarea = document.getElementById('punch-note');
+    const noteText = noteTextarea ? noteTextarea.value.trim() : '';
+    
     fetch(`${API_BASE}/punch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ punch_type: punchType }),
+        body: JSON.stringify({ 
+            punch_type: punchType,
+            notes: noteText || null
+        }),
         credentials: 'include'
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
             showMessage('Punch recorded successfully!', 'success');
+            // Clear the note box after successful submission
+            if (noteTextarea) {
+                noteTextarea.value = '';
+            }
             loadEmployeeRecords();
         } else {
             showMessage(data.error || 'Failed to record punch', 'error');
@@ -433,7 +444,7 @@ function handleManualPunch(e) {
     const punch = {
         employee_id: parseInt(document.getElementById('punch-employee').value),
         punch_type: document.getElementById('punch-type').value,
-        notes: document.getElementById('punch-notes').value
+        notes: document.getElementById('punch-notes').value.trim() || null
     };
     
     fetch(`${API_BASE}/punch`, {

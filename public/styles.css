@@ -228,6 +228,23 @@ body {
     color: #667eea;
 }
 
+/* Punch Note Textarea */
+#punch-note {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.3s;
+}
+
+#punch-note:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
 .note-card {
     background: white;
     padding: 20px;
