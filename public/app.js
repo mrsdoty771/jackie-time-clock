@@ -128,8 +128,8 @@ function setupEventListeners() {
     // Employee punches
     document.getElementById('clock-in-btn')?.addEventListener('click', () => handlePunch('clock_in'));
     document.getElementById('clock-out-btn')?.addEventListener('click', () => handlePunch('clock_out'));
-    document.getElementById('lunch-in-btn')?.addEventListener('click', () => handlePunch('lunch_in'));
-    document.getElementById('lunch-out-btn')?.addEventListener('click', () => handlePunch('lunch_out'));
+    document.getElementById('lunch-in-btn')?.addEventListener('click', () => handlePunch('lunch_out'));
+    document.getElementById('lunch-out-btn')?.addEventListener('click', () => handlePunch('lunch_in'));
     
     // Manager tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -320,9 +320,9 @@ function handlePunch(punchType) {
             if (punchType === 'clock_in') {
                 showGreatDayModal();
             } else if (punchType === 'lunch_in') {
-                showLunchModal();
-            } else if (punchType === 'lunch_out') {
                 showWelcomeBackModal();
+            } else if (punchType === 'lunch_out') {
+                showLunchModal();
             } else if (punchType === 'clock_out') {
                 showClockOutModal();
             } else {
@@ -359,67 +359,55 @@ function loadEmployeeRecords() {
 function updatePunchButtonStates(records) {
     const clockInBtn = document.getElementById('clock-in-btn');
     const clockOutBtn = document.getElementById('clock-out-btn');
+    const lunchInBtn = document.getElementById('lunch-in-btn');
+    const lunchOutBtn = document.getElementById('lunch-out-btn');
     
-    if (!clockInBtn || !clockOutBtn) return;
+    if (!clockInBtn || !clockOutBtn || !lunchInBtn || !lunchOutBtn) return;
     
-    // Get the most recent punch
-    if (records && records.length > 0) {
-        // Records are already sorted by time DESC from the API
-        const lastPunch = records[0];
-        
-        if (lastPunch.punch_type === 'clock_in') {
-            // Last punch was clock in, so disable clock in button
-            clockInBtn.disabled = true;
-            clockInBtn.style.opacity = '0.5';
-            clockInBtn.style.cursor = 'not-allowed';
-            clockOutBtn.disabled = false;
-            clockOutBtn.style.opacity = '1';
-            clockOutBtn.style.cursor = 'pointer';
-        } else if (lastPunch.punch_type === 'clock_out') {
-            // Last punch was clock out, so disable clock out button
-            clockOutBtn.disabled = true;
-            clockOutBtn.style.opacity = '0.5';
-            clockOutBtn.style.cursor = 'not-allowed';
-            clockInBtn.disabled = false;
-            clockInBtn.style.opacity = '1';
-            clockInBtn.style.cursor = 'pointer';
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    // Helper function to set button state
+    function setButtonState(btn, disabled) {
+        if (disabled) {
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
         } else {
-            // Last punch was lunch in/out, check the most recent clock_in or clock_out
-            const lastClockPunch = records.find(r => r.punch_type === 'clock_in' || r.punch_type === 'clock_out');
-            if (lastClockPunch) {
-                if (lastClockPunch.punch_type === 'clock_in') {
-                    clockInBtn.disabled = true;
-                    clockInBtn.style.opacity = '0.5';
-                    clockInBtn.style.cursor = 'not-allowed';
-                    clockOutBtn.disabled = false;
-                    clockOutBtn.style.opacity = '1';
-                    clockOutBtn.style.cursor = 'pointer';
-                } else {
-                    clockOutBtn.disabled = true;
-                    clockOutBtn.style.opacity = '0.5';
-                    clockOutBtn.style.cursor = 'not-allowed';
-                    clockInBtn.disabled = false;
-                    clockInBtn.style.opacity = '1';
-                    clockInBtn.style.cursor = 'pointer';
-                }
-            } else {
-                // No clock in/out found, enable both
-                clockInBtn.disabled = false;
-                clockInBtn.style.opacity = '1';
-                clockInBtn.style.cursor = 'pointer';
-                clockOutBtn.disabled = false;
-                clockOutBtn.style.opacity = '1';
-                clockOutBtn.style.cursor = 'pointer';
-            }
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
         }
+    }
+    
+    if (records && records.length > 0) {
+        // Filter records for today only
+        const todayRecords = records.filter(record => {
+            const recordDate = new Date(record.punch_time);
+            const recordDateStr = recordDate.toISOString().split('T')[0];
+            return recordDateStr === todayStr;
+        });
+        
+        // Check which punch types were used today
+        const hasClockIn = todayRecords.some(r => r.punch_type === 'clock_in');
+        const hasClockOut = todayRecords.some(r => r.punch_type === 'clock_out');
+        const hasLunchIn = todayRecords.some(r => r.punch_type === 'lunch_in');
+        const hasLunchOut = todayRecords.some(r => r.punch_type === 'lunch_out');
+        
+        // Disable buttons if that punch type was already used today
+        // Also check logical dependencies (can't clock out/lunch without clocking in first)
+        // Note: lunch-in-btn records lunch_out, lunch-out-btn records lunch_in
+        setButtonState(clockInBtn, hasClockIn);
+        setButtonState(clockOutBtn, hasClockOut || !hasClockIn);
+        setButtonState(lunchInBtn, hasLunchOut || !hasClockIn); // lunch-in-btn = "Go to Lunch" = lunch_out
+        setButtonState(lunchOutBtn, hasLunchIn || !hasLunchOut); // lunch-out-btn = "Return from Lunch" = lunch_in
     } else {
         // No records, enable clock in only (can't clock out if never clocked in)
-        clockInBtn.disabled = false;
-        clockInBtn.style.opacity = '1';
-        clockInBtn.style.cursor = 'pointer';
-        clockOutBtn.disabled = true;
-        clockOutBtn.style.opacity = '0.5';
-        clockOutBtn.style.cursor = 'not-allowed';
+        setButtonState(clockInBtn, false);
+        setButtonState(clockOutBtn, true);
+        setButtonState(lunchInBtn, true);
+        setButtonState(lunchOutBtn, true);
     }
 }
 
@@ -461,15 +449,17 @@ function displayEmployeeRecords(records) {
             const punchTime = new Date(record.punch_time);
             if (record.punch_type === 'clock_in') clockIn = punchTime;
             if (record.punch_type === 'clock_out') clockOut = punchTime;
-            if (record.punch_type === 'lunch_in') lunchIn = punchTime;
-            if (record.punch_type === 'lunch_out') lunchOut = punchTime;
+            // Note: lunch_in means returning from lunch, lunch_out means going to lunch
+            if (record.punch_type === 'lunch_in') lunchIn = punchTime; // Return from lunch
+            if (record.punch_type === 'lunch_out') lunchOut = punchTime; // Go to lunch
         });
         
         let totalHours = 0;
         if (clockIn && clockOut) {
             totalHours = (clockOut - clockIn) / (1000 * 60 * 60);
-            if (lunchIn && lunchOut) {
-                const lunchHours = (lunchOut - lunchIn) / (1000 * 60 * 60);
+            // Subtract lunch time: lunchOut is when they left, lunchIn is when they returned
+            if (lunchOut && lunchIn && lunchOut < lunchIn) {
+                const lunchHours = (lunchIn - lunchOut) / (1000 * 60 * 60);
                 totalHours -= lunchHours;
             }
             totalHours = Math.max(0, totalHours);
