@@ -506,6 +506,35 @@ body {
     margin-left: 15px;
 }
 
+/* Print Styles */
+@media print {
+    body {
+        background: white !important;
+    }
+    
+    .navbar,
+    .tabs,
+    .form-group,
+    button,
+    #generate-report-btn,
+    #print-report-btn,
+    .no-print {
+        display: none !important;
+    }
+    
+    .report-card {
+        page-break-inside: avoid;
+        margin-bottom: 20px;
+    }
+    
+    .report-header {
+        text-align: center;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+    }
+}
+
 /* Message */
 .message {
     position: fixed;

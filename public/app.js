@@ -78,6 +78,8 @@ function showPage(role) {
     } else {
         document.getElementById('employee-page').classList.remove('hidden');
         updateEmployeeNameDisplay();
+        // Initialize button states to allow clock in until records load
+        updatePunchButtonStates([]);
         loadEmployeeRecords();
     }
 }
@@ -200,6 +202,7 @@ function setupEventListeners() {
     
     // Reports
     document.getElementById('generate-report-btn')?.addEventListener('click', generateReport);
+    document.getElementById('print-report-btn')?.addEventListener('click', printReport);
     
     // Edit Punches
     document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
@@ -316,15 +319,19 @@ function handlePunch(punchType) {
     .then(res => res.json())
     .then(data => {
         if (data.success) {
+            // Get employee name for personalized messages (just first name)
+            const fullName = currentUser?.employee_name || currentUser?.username || 'Employee';
+            const firstName = getFirstName(fullName);
+            
             // Show popup for clock in, lunch in, lunch out, and clock out
             if (punchType === 'clock_in') {
-                showGreatDayModal();
+                showGreatDayModal(firstName);
             } else if (punchType === 'lunch_in') {
-                showWelcomeBackModal();
+                showWelcomeBackModal(firstName);
             } else if (punchType === 'lunch_out') {
-                showLunchModal();
+                showLunchModal(firstName);
             } else if (punchType === 'clock_out') {
-                showClockOutModal();
+                showClockOutModal(firstName);
             } else {
                 showMessage('Punch recorded successfully!', 'success');
             }
@@ -353,6 +360,8 @@ function loadEmployeeRecords() {
         })
         .catch(err => {
             console.error('Error loading records:', err);
+            // If records fail to load, enable clock in button (allow user to clock in)
+            updatePunchButtonStates([]);
         });
 }
 
@@ -364,9 +373,17 @@ function updatePunchButtonStates(records) {
     
     if (!clockInBtn || !clockOutBtn || !lunchInBtn || !lunchOutBtn) return;
     
-    // Get today's date in YYYY-MM-DD format
+    // Helper function to get local date string in YYYY-MM-DD format
+    function getLocalDateString(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    // Get today's date in YYYY-MM-DD format (local time)
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = getLocalDateString(today);
     
     // Helper function to set button state
     function setButtonState(btn, disabled) {
@@ -382,10 +399,10 @@ function updatePunchButtonStates(records) {
     }
     
     if (records && records.length > 0) {
-        // Filter records for today only
+        // Filter records for today only (using local dates)
         const todayRecords = records.filter(record => {
             const recordDate = new Date(record.punch_time);
-            const recordDateStr = recordDate.toISOString().split('T')[0];
+            const recordDateStr = getLocalDateString(recordDate);
             return recordDateStr === todayStr;
         });
         
@@ -913,11 +930,16 @@ function generateReport() {
 
 function displayReport(reportData) {
     const container = document.getElementById('report-results');
+    const printBtn = document.getElementById('print-report-btn');
     
     if (reportData.length === 0) {
         container.innerHTML = '<p>No records found for the selected date range.</p>';
+        if (printBtn) printBtn.style.display = 'none';
         return;
     }
+    
+    // Show print button if there's data
+    if (printBtn) printBtn.style.display = 'inline-block';
     
     container.innerHTML = reportData.map(emp => {
         const daysHtml = Object.values(emp.days).map(day => {
@@ -944,6 +966,167 @@ function displayReport(reportData) {
             </div>
         `;
     }).join('');
+}
+
+function printReport() {
+    const reportResults = document.getElementById('report-results');
+    if (!reportResults || reportResults.innerHTML.trim() === '' || reportResults.innerHTML.includes('No records found')) {
+        showMessage('No report to print. Please generate a report first.', 'error');
+        return;
+    }
+    
+    // Get report date range
+    const startDate = document.getElementById('report-start-date').value;
+    const endDate = document.getElementById('report-end-date').value;
+    const employeeSelect = document.getElementById('report-employee');
+    const selectedEmployee = employeeSelect.options[employeeSelect.selectedIndex].text;
+    
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    
+    // Get the report HTML
+    const reportHTML = reportResults.innerHTML;
+    
+    // Create print-friendly HTML
+    const printHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Time Clock Report</title>
+            <style>
+                @media print {
+                    @page {
+                        margin: 1cm;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 20px;
+                        font-family: Arial, sans-serif;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                }
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    color: #333;
+                }
+                .report-header {
+                    text-align: center;
+                    margin-bottom: 30px;
+                    border-bottom: 2px solid #667eea;
+                    padding-bottom: 15px;
+                }
+                .report-header h1 {
+                    margin: 0;
+                    color: #667eea;
+                    font-size: 24px;
+                }
+                .report-header p {
+                    margin: 5px 0;
+                    color: #666;
+                }
+                .report-card {
+                    background: white;
+                    padding: 20px;
+                    margin-bottom: 25px;
+                    border: 1px solid #ddd;
+                    page-break-inside: avoid;
+                }
+                .report-card h4 {
+                    color: #667eea;
+                    margin-bottom: 15px;
+                    font-size: 18px;
+                    border-bottom: 1px solid #eee;
+                    padding-bottom: 10px;
+                }
+                .report-summary {
+                    background: #f8f9fa;
+                    padding: 15px;
+                    margin-bottom: 15px;
+                    border-radius: 5px;
+                }
+                .total-hours {
+                    font-size: 20px;
+                    font-weight: bold;
+                    color: #667eea;
+                }
+                .day-record {
+                    padding: 10px;
+                    border-bottom: 1px solid #e0e0e0;
+                    margin-bottom: 10px;
+                }
+                .day-record:last-child {
+                    border-bottom: none;
+                }
+                .day-header {
+                    font-weight: 600;
+                    color: #333;
+                    margin-bottom: 8px;
+                    font-size: 16px;
+                }
+                .day-punches {
+                    font-size: 14px;
+                    color: #666;
+                    margin-left: 15px;
+                }
+                .day-punches div {
+                    margin: 5px 0;
+                }
+                .print-footer {
+                    margin-top: 30px;
+                    padding-top: 15px;
+                    border-top: 1px solid #ddd;
+                    text-align: center;
+                    color: #666;
+                    font-size: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="report-header">
+                <h1>Time Clock Report</h1>
+                <p><strong>Employee:</strong> ${selectedEmployee === 'All Employees' ? 'All Employees' : selectedEmployee}</p>
+                <p><strong>Date Range:</strong> ${formatDateForPrint(startDate)} - ${formatDateForPrint(endDate)}</p>
+                <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+            </div>
+            ${reportHTML}
+            <div class="print-footer">
+                <p>Generated by Time Clock System</p>
+            </div>
+        </body>
+        </html>
+    `;
+    
+    printWindow.document.write(printHTML);
+    printWindow.document.close();
+    
+    // Wait for content to load, then print
+    printWindow.onload = function() {
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
+    };
+}
+
+function formatDateForPrint(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+}
+
+function getFirstName(fullName) {
+    if (!fullName) return 'Employee';
+    // Split by space and take the first part
+    const nameParts = fullName.trim().split(/\s+/);
+    return nameParts[0] || 'Employee';
 }
 
 function switchTab(tabName) {
@@ -1077,9 +1260,13 @@ function showMessage(message, type = 'success') {
     }, 5000);
 }
 
-function showGreatDayModal() {
+function showGreatDayModal(employeeName) {
     const modal = document.getElementById('great-day-modal');
+    const nameSpan = document.getElementById('great-day-name');
     if (modal) {
+        if (nameSpan && employeeName) {
+            nameSpan.textContent = employeeName;
+        }
         modal.classList.remove('hidden');
     }
 }
@@ -1091,9 +1278,13 @@ function closeGreatDayModal() {
     }
 }
 
-function showLunchModal() {
+function showLunchModal(employeeName) {
     const modal = document.getElementById('lunch-modal');
+    const nameSpan = document.getElementById('lunch-name');
     if (modal) {
+        if (nameSpan && employeeName) {
+            nameSpan.textContent = employeeName;
+        }
         modal.classList.remove('hidden');
     }
 }
@@ -1105,9 +1296,13 @@ function closeLunchModal() {
     }
 }
 
-function showWelcomeBackModal() {
+function showWelcomeBackModal(employeeName) {
     const modal = document.getElementById('welcome-back-modal');
+    const nameSpan = document.getElementById('welcome-back-name');
     if (modal) {
+        if (nameSpan && employeeName) {
+            nameSpan.textContent = employeeName;
+        }
         modal.classList.remove('hidden');
     }
 }
@@ -1119,9 +1314,13 @@ function closeWelcomeBackModal() {
     }
 }
 
-function showClockOutModal() {
+function showClockOutModal(employeeName) {
     const modal = document.getElementById('clock-out-modal');
+    const nameSpan = document.getElementById('clock-out-name');
     if (modal) {
+        if (nameSpan && employeeName) {
+            nameSpan.textContent = employeeName;
+        }
         modal.classList.remove('hidden');
     }
 }

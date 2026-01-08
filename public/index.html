@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Time Clock System</title>
+    <title>MVC Time Clock</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="login-page" class="page">
         <div class="login-container">
-            <h1>Time Clock System</h1>
+            <h1>MVC Time Clock</h1>
             <form id="login-form">
                 <div class="form-group">
                     <label for="user-select">Select Your Name</label>
@@ -154,7 +154,10 @@
                     <label for="report-end-date">End Date</label>
                     <input type="date" id="report-end-date" required>
                 </div>
-                <button id="generate-report-btn" class="btn btn-primary">Generate Report</button>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <button id="generate-report-btn" class="btn btn-primary">Generate Report</button>
+                    <button id="print-report-btn" class="btn btn-secondary" style="display: none;">Print Report</button>
+                </div>
                 <div id="report-results"></div>
             </div>
         </div>
@@ -227,7 +230,7 @@
     <!-- Have a Great Day Popup Modal -->
     <div id="great-day-modal" class="popup-modal hidden">
         <div class="popup-modal-content">
-            <h2>Have a Great Day!</h2>
+            <h2>Have a Great Day, <span id="great-day-name"></span>!</h2>
             <button class="btn btn-primary" onclick="closeGreatDayModal()">OK</button>
         </div>
     </div>
@@ -235,7 +238,7 @@
     <!-- Enjoy Your Lunch Popup Modal -->
     <div id="lunch-modal" class="popup-modal hidden">
         <div class="popup-modal-content">
-            <h2>Enjoy your Lunch :D</h2>
+            <h2>Enjoy your Lunch, <span id="lunch-name"></span> :D</h2>
             <button class="btn btn-primary" onclick="closeLunchModal()">OK</button>
         </div>
     </div>
@@ -243,7 +246,7 @@
     <!-- Welcome Back Popup Modal -->
     <div id="welcome-back-modal" class="popup-modal hidden">
         <div class="popup-modal-content">
-            <h2>Welcome Back!</h2>
+            <h2>Welcome Back, <span id="welcome-back-name"></span>!</h2>
             <button class="btn btn-primary" onclick="closeWelcomeBackModal()">OK</button>
         </div>
     </div>
@@ -251,7 +254,7 @@
     <!-- Clock Out Popup Modal -->
     <div id="clock-out-modal" class="popup-modal hidden">
         <div class="popup-modal-content">
-            <h2>Thank you for all your Help today!</h2>
+            <h2>Thank you for all your Help today, <span id="clock-out-name"></span>!</h2>
             <button class="btn btn-primary" onclick="closeClockOutModal()">OK</button>
         </div>
     </div>
