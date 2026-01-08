@@ -80,6 +80,20 @@ function initializeDatabase() {
     FOREIGN KEY (employee_id) REFERENCES employees(id)
   )`);
 
+  // Company settings table
+  db.run(`CREATE TABLE IF NOT EXISTS company_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name TEXT DEFAULT 'MVC',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Initialize company settings with default value if not exists
+  db.get("SELECT * FROM company_settings LIMIT 1", (err, row) => {
+    if (!row) {
+      db.run("INSERT INTO company_settings (company_name) VALUES (?)", ['MVC']);
+    }
+  });
+
   // Create default admin user if it doesn't exist
   db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
     if (!row) {
@@ -660,6 +674,56 @@ app.put('/api/notes/:id/read', requireManager, (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
     res.json({ success: true });
+  });
+});
+
+// Company Settings routes
+app.get('/api/company-settings', (req, res) => {
+  // Public endpoint - no auth required for login page
+  db.get("SELECT * FROM company_settings LIMIT 1", (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    // Return default if no settings exist
+    if (!row) {
+      return res.json({ company_name: 'MVC' });
+    }
+    res.json({ company_name: row.company_name || 'MVC' });
+  });
+});
+
+app.put('/api/company-settings', requireManager, (req, res) => {
+  const { company_name } = req.body;
+  
+  if (!company_name || company_name.trim().length === 0) {
+    return res.status(400).json({ error: 'Company name is required' });
+  }
+  
+  // Update or insert company settings
+  db.get("SELECT * FROM company_settings LIMIT 1", (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (row) {
+      // Update existing settings
+      db.run("UPDATE company_settings SET company_name = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+        [company_name.trim(), row.id], function(updateErr) {
+          if (updateErr) {
+            return res.status(500).json({ error: 'Database error: ' + updateErr.message });
+          }
+          res.json({ success: true, company_name: company_name.trim() });
+        });
+    } else {
+      // Insert new settings
+      db.run("INSERT INTO company_settings (company_name) VALUES (?)",
+        [company_name.trim()], function(insertErr) {
+          if (insertErr) {
+            return res.status(500).json({ error: 'Database error: ' + insertErr.message });
+          }
+          res.json({ success: true, company_name: company_name.trim() });
+        });
+    }
   });
 });
 

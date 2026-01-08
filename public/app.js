@@ -8,6 +8,9 @@ let currentWeekStart = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    // Load company name for login page
+    loadCompanyNameForLogin();
+    
     // Don't check auth immediately - let user see login page first
     // checkAuth will run after a short delay to avoid conflicts
     setTimeout(() => {
@@ -17,6 +20,20 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeWeekStart();
     loadEmployeesForLogin();
 });
+
+function loadCompanyNameForLogin() {
+    fetch(`${API_BASE}/company-settings`)
+        .then(res => res.json())
+        .then(data => {
+            const companyName = data.company_name || 'MVC';
+            updateLoginPageTitle(companyName);
+        })
+        .catch(err => {
+            console.error('Error loading company name:', err);
+            // Default to MVC if error
+            updateLoginPageTitle('MVC');
+        });
+}
 
 function initializeWeekStart() {
     const today = new Date();
@@ -208,9 +225,8 @@ function setupEventListeners() {
     document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
     document.getElementById('refresh-punches-btn')?.addEventListener('click', loadPunchesForEdit);
     
-    // Edit Punches
-    document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
-    document.getElementById('refresh-punches-btn')?.addEventListener('click', loadPunchesForEdit);
+    // Company Settings
+    document.getElementById('company-settings-form')?.addEventListener('submit', handleCompanySettings);
 }
 
 function loadEmployeesForLogin() {
@@ -1143,6 +1159,79 @@ function switchTab(tabName) {
         content.classList.remove('active');
     });
     document.getElementById(`${tabName}-tab`).classList.add('active');
+    
+    // Load company settings when switching to that tab
+    if (tabName === 'company-settings' && currentUser?.role === 'manager') {
+        loadCompanySettings();
+    }
+}
+
+function loadCompanySettings() {
+    fetch(`${API_BASE}/company-settings`, {
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            const companyNameInput = document.getElementById('company-name');
+            if (companyNameInput) {
+                companyNameInput.value = data.company_name || 'MVC';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading company settings:', err);
+        });
+}
+
+function handleCompanySettings(e) {
+    e.preventDefault();
+    const companyName = document.getElementById('company-name').value.trim();
+    const messageDiv = document.getElementById('company-settings-message');
+    
+    if (!companyName) {
+        if (messageDiv) {
+            messageDiv.innerHTML = '<p style="color: red;">Company name is required</p>';
+        }
+        return;
+    }
+    
+    fetch(`${API_BASE}/company-settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_name: companyName }),
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                if (messageDiv) {
+                    messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page will update on next refresh.</p>';
+                }
+                // Update login page title if visible
+                updateLoginPageTitle(data.company_name);
+            } else {
+                if (messageDiv) {
+                    messageDiv.innerHTML = `<p style="color: red;">${data.error || 'Failed to save settings'}</p>`;
+                }
+            }
+        })
+        .catch(err => {
+            console.error('Error saving company settings:', err);
+            if (messageDiv) {
+                messageDiv.innerHTML = '<p style="color: red;">Error saving settings. Please try again.</p>';
+            }
+        });
+}
+
+function updateLoginPageTitle(companyName) {
+    const loginTitle = document.querySelector('#login-page h1');
+    const pageTitle = document.querySelector('title');
+    
+    if (loginTitle) {
+        loginTitle.textContent = `${companyName} Time Clock`;
+    }
+    if (pageTitle) {
+        pageTitle.textContent = `${companyName} Time Clock`;
+    }
 }
 
 function loadEmployeeNotes() {
