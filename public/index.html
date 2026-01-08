@@ -39,10 +39,10 @@
         
         <div class="container">
             <div class="punch-section">
-                <h3>Shift/Action Note</h3>
+                <h3>Note:</h3>
                 <div class="form-group">
-                    <label for="punch-note">Add a note for your next action (optional)</label>
-                    <textarea id="punch-note" rows="3" placeholder="Example: Working from home today, Arrived late due to traffic, etc."></textarea>
+                    <label for="punch-note">Add a note for Admin (optional)</label>
+                    <textarea id="punch-note" rows="3" placeholder="Arrived late due to traffic, etc."></textarea>
                 </div>
             </div>
             
@@ -79,8 +79,8 @@
             <div class="tabs">
                 <button class="tab-btn active" data-tab="employees">Employees</button>
                 <button class="tab-btn" data-tab="punches">Manual Punch</button>
+                <button class="tab-btn" data-tab="edit-punches">Edit Employee Punches</button>
                 <button class="tab-btn" data-tab="reports">Reports</button>
-                <button class="tab-btn" data-tab="notes">Employee Notes</button>
             </div>
             
             <!-- Employees Tab -->
@@ -117,6 +117,26 @@
                 </form>
             </div>
             
+            <!-- Edit Employee Punches Tab -->
+            <div id="edit-punches-tab" class="tab-content">
+                <div class="section-header">
+                    <h3>Edit Employee Punches</h3>
+                    <button id="refresh-punches-btn" class="btn btn-secondary">Refresh</button>
+                </div>
+                <div class="form-group">
+                    <label for="edit-punches-employee">Employee (All if not selected)</label>
+                    <select id="edit-punches-employee">
+                        <option value="">All Employees</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-punches-date">Date</label>
+                    <input type="date" id="edit-punches-date">
+                </div>
+                <button id="load-punches-btn" class="btn btn-primary">Load Punches</button>
+                <div id="edit-punches-list" style="margin-top: 20px;"></div>
+            </div>
+            
             <!-- Reports Tab -->
             <div id="reports-tab" class="tab-content">
                 <h3>Weekly Reports</h3>
@@ -127,20 +147,15 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="report-week">Week Starting (Monday)</label>
-                    <input type="date" id="report-week" required>
+                    <label for="report-start-date">Starting Date</label>
+                    <input type="date" id="report-start-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="report-end-date">End Date</label>
+                    <input type="date" id="report-end-date" required>
                 </div>
                 <button id="generate-report-btn" class="btn btn-primary">Generate Report</button>
                 <div id="report-results"></div>
-            </div>
-            
-            <!-- Notes Tab -->
-            <div id="notes-tab" class="tab-content">
-                <div class="section-header">
-                    <h3>Employee Notes</h3>
-                    <button id="refresh-notes-btn" class="btn btn-secondary">Refresh</button>
-                </div>
-                <div id="employee-notes-list"></div>
             </div>
         </div>
     </div>
@@ -175,7 +190,72 @@
         </div>
     </div>
 
+    <!-- Edit Employee Modal -->
+    <div id="edit-employee-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-edit">&times;</span>
+            <h3>Edit Employee</h3>
+            <form id="edit-employee-form">
+                <input type="hidden" id="edit-emp-id">
+                <div class="form-group">
+                    <label for="edit-emp-name">Name *</label>
+                    <input type="text" id="edit-emp-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-number">Employee Number *</label>
+                    <input type="text" id="edit-emp-number" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-phone">Phone</label>
+                    <input type="tel" id="edit-emp-phone">
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-password">New Password (leave blank to keep current)</label>
+                    <input type="password" id="edit-emp-password" placeholder="Enter new password">
+                    <small style="color: #666; font-size: 12px;">Leave blank if you don't want to change the password</small>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-edit-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="message" class="message hidden"></div>
+    
+    <!-- Have a Great Day Popup Modal -->
+    <div id="great-day-modal" class="popup-modal hidden">
+        <div class="popup-modal-content">
+            <h2>Have a Great Day!</h2>
+            <button class="btn btn-primary" onclick="closeGreatDayModal()">OK</button>
+        </div>
+    </div>
+    
+    <!-- Enjoy Your Lunch Popup Modal -->
+    <div id="lunch-modal" class="popup-modal hidden">
+        <div class="popup-modal-content">
+            <h2>Enjoy your Lunch :D</h2>
+            <button class="btn btn-primary" onclick="closeLunchModal()">OK</button>
+        </div>
+    </div>
+    
+    <!-- Welcome Back Popup Modal -->
+    <div id="welcome-back-modal" class="popup-modal hidden">
+        <div class="popup-modal-content">
+            <h2>Welcome Back!</h2>
+            <button class="btn btn-primary" onclick="closeWelcomeBackModal()">OK</button>
+        </div>
+    </div>
+
+    <!-- Clock Out Popup Modal -->
+    <div id="clock-out-modal" class="popup-modal hidden">
+        <div class="popup-modal-content">
+            <h2>Thank you for all your Help today!</h2>
+            <button class="btn btn-primary" onclick="closeClockOutModal()">OK</button>
+        </div>
+    </div>
+    
     <script src="app.js"></script>
 </body>
 </html>

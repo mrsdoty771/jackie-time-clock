@@ -23,7 +23,11 @@ function initializeWeekStart() {
     const day = today.getDay();
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(today.setDate(diff));
-    document.getElementById('report-week').value = monday.toISOString().split('T')[0];
+    document.getElementById('report-start-date').value = monday.toISOString().split('T')[0];
+    
+    const endDate = new Date(monday);
+    endDate.setDate(endDate.getDate() + 6);
+    document.getElementById('report-end-date').value = endDate.toISOString().split('T')[0];
 }
 
 // Authentication
@@ -70,7 +74,7 @@ function showPage(role) {
         loadEmployees();
         loadEmployeesForPunch();
         loadEmployeesForReport();
-        loadEmployeeNotes();
+        loadEmployeesForEditPunches();
     } else {
         document.getElementById('employee-page').classList.remove('hidden');
         updateEmployeeNameDisplay();
@@ -81,7 +85,7 @@ function showPage(role) {
 function updateEmployeeNameDisplay() {
     // If we have employee_name, use it
     if (currentUser.employee_name) {
-        document.getElementById('employee-name').textContent = currentUser.employee_name;
+        document.getElementById('employee-name').textContent = 'Hello ' + currentUser.employee_name;
         return;
     }
     
@@ -95,20 +99,20 @@ function updateEmployeeNameDisplay() {
                 if (data && data.length > 0) {
                     const employee = data.find(emp => emp.id === currentUser.employee_id) || data[0];
                     if (employee && employee.name) {
-                        document.getElementById('employee-name').textContent = employee.name;
+                        document.getElementById('employee-name').textContent = 'Hello ' + employee.name;
                         currentUser.employee_name = employee.name;
                     } else {
-                        document.getElementById('employee-name').textContent = 'Employee';
+                        document.getElementById('employee-name').textContent = 'Hello Employee';
                     }
                 } else {
-                    document.getElementById('employee-name').textContent = 'Employee';
+                    document.getElementById('employee-name').textContent = 'Hello Employee';
                 }
             })
             .catch(() => {
-                document.getElementById('employee-name').textContent = 'Employee';
+                document.getElementById('employee-name').textContent = 'Hello Employee';
             });
     } else {
-        document.getElementById('employee-name').textContent = 'Employee';
+        document.getElementById('employee-name').textContent = 'Hello Employee';
     }
 }
 
@@ -150,14 +154,60 @@ function setupEventListeners() {
         document.getElementById('add-employee-modal').classList.add('hidden');
     });
     
+    // Edit employee modal
+    document.getElementById('edit-employee-form')?.addEventListener('submit', handleEditEmployee);
+    document.getElementById('cancel-edit-btn')?.addEventListener('click', () => {
+        document.getElementById('edit-employee-modal').classList.add('hidden');
+        document.getElementById('edit-employee-form').reset();
+    });
+    
+    document.querySelector('.close-edit')?.addEventListener('click', () => {
+        document.getElementById('edit-employee-modal').classList.add('hidden');
+    });
+    
+    // Phone number formatting for edit modal
+    const editPhoneInput = document.getElementById('edit-emp-phone');
+    if (editPhoneInput) {
+        editPhoneInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+            if (value.length > 10) value = value.slice(0, 10); // Limit to 10 digits
+            if (value.length >= 6) {
+                value = value.slice(0, 3) + '-' + value.slice(3, 6) + '-' + value.slice(6);
+            } else if (value.length >= 3) {
+                value = value.slice(0, 3) + '-' + value.slice(3);
+            }
+            e.target.value = value;
+        });
+    }
+    
+    // Phone number formatting for add modal
+    const addPhoneInput = document.getElementById('emp-phone');
+    if (addPhoneInput) {
+        addPhoneInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+            if (value.length > 10) value = value.slice(0, 10); // Limit to 10 digits
+            if (value.length >= 6) {
+                value = value.slice(0, 3) + '-' + value.slice(3, 6) + '-' + value.slice(6);
+            } else if (value.length >= 3) {
+                value = value.slice(0, 3) + '-' + value.slice(3);
+            }
+            e.target.value = value;
+        });
+    }
+    
     // Manual punch
     document.getElementById('manual-punch-form')?.addEventListener('submit', handleManualPunch);
     
     // Reports
     document.getElementById('generate-report-btn')?.addEventListener('click', generateReport);
     
-    // Notes
-    document.getElementById('refresh-notes-btn')?.addEventListener('click', loadEmployeeNotes);
+    // Edit Punches
+    document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
+    document.getElementById('refresh-punches-btn')?.addEventListener('click', loadPunchesForEdit);
+    
+    // Edit Punches
+    document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
+    document.getElementById('refresh-punches-btn')?.addEventListener('click', loadPunchesForEdit);
 }
 
 function loadEmployeesForLogin() {
@@ -168,7 +218,7 @@ function loadEmployeesForLogin() {
             if (select) {
                 // Keep the admin option and add employees
                 const employeeOptions = data.map(emp => 
-                    `<option value="emp_${emp.id}">${emp.name} (${emp.employee_number})</option>`
+                    `<option value="emp_${emp.id}">${emp.name}</option>`
                 ).join('');
                 select.innerHTML = '<option value="">-- Select Name --</option>' + 
                     '<option value="admin">Admin (Manager)</option>' + 
@@ -266,7 +316,18 @@ function handlePunch(punchType) {
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            showMessage('Punch recorded successfully!', 'success');
+            // Show popup for clock in, lunch in, lunch out, and clock out
+            if (punchType === 'clock_in') {
+                showGreatDayModal();
+            } else if (punchType === 'lunch_in') {
+                showLunchModal();
+            } else if (punchType === 'lunch_out') {
+                showWelcomeBackModal();
+            } else if (punchType === 'clock_out') {
+                showClockOutModal();
+            } else {
+                showMessage('Punch recorded successfully!', 'success');
+            }
             // Clear the note box after successful submission
             if (noteTextarea) {
                 noteTextarea.value = '';
@@ -288,10 +349,78 @@ function loadEmployeeRecords() {
         .then(res => res.json())
         .then(data => {
             displayEmployeeRecords(data);
+            updatePunchButtonStates(data);
         })
         .catch(err => {
             console.error('Error loading records:', err);
         });
+}
+
+function updatePunchButtonStates(records) {
+    const clockInBtn = document.getElementById('clock-in-btn');
+    const clockOutBtn = document.getElementById('clock-out-btn');
+    
+    if (!clockInBtn || !clockOutBtn) return;
+    
+    // Get the most recent punch
+    if (records && records.length > 0) {
+        // Records are already sorted by time DESC from the API
+        const lastPunch = records[0];
+        
+        if (lastPunch.punch_type === 'clock_in') {
+            // Last punch was clock in, so disable clock in button
+            clockInBtn.disabled = true;
+            clockInBtn.style.opacity = '0.5';
+            clockInBtn.style.cursor = 'not-allowed';
+            clockOutBtn.disabled = false;
+            clockOutBtn.style.opacity = '1';
+            clockOutBtn.style.cursor = 'pointer';
+        } else if (lastPunch.punch_type === 'clock_out') {
+            // Last punch was clock out, so disable clock out button
+            clockOutBtn.disabled = true;
+            clockOutBtn.style.opacity = '0.5';
+            clockOutBtn.style.cursor = 'not-allowed';
+            clockInBtn.disabled = false;
+            clockInBtn.style.opacity = '1';
+            clockInBtn.style.cursor = 'pointer';
+        } else {
+            // Last punch was lunch in/out, check the most recent clock_in or clock_out
+            const lastClockPunch = records.find(r => r.punch_type === 'clock_in' || r.punch_type === 'clock_out');
+            if (lastClockPunch) {
+                if (lastClockPunch.punch_type === 'clock_in') {
+                    clockInBtn.disabled = true;
+                    clockInBtn.style.opacity = '0.5';
+                    clockInBtn.style.cursor = 'not-allowed';
+                    clockOutBtn.disabled = false;
+                    clockOutBtn.style.opacity = '1';
+                    clockOutBtn.style.cursor = 'pointer';
+                } else {
+                    clockOutBtn.disabled = true;
+                    clockOutBtn.style.opacity = '0.5';
+                    clockOutBtn.style.cursor = 'not-allowed';
+                    clockInBtn.disabled = false;
+                    clockInBtn.style.opacity = '1';
+                    clockInBtn.style.cursor = 'pointer';
+                }
+            } else {
+                // No clock in/out found, enable both
+                clockInBtn.disabled = false;
+                clockInBtn.style.opacity = '1';
+                clockInBtn.style.cursor = 'pointer';
+                clockOutBtn.disabled = false;
+                clockOutBtn.style.opacity = '1';
+                clockOutBtn.style.cursor = 'pointer';
+            }
+        }
+    } else {
+        // No records, enable clock in only (can't clock out if never clocked in)
+        clockInBtn.disabled = false;
+        clockInBtn.style.opacity = '1';
+        clockInBtn.style.cursor = 'pointer';
+        clockOutBtn.disabled = true;
+        clockOutBtn.style.opacity = '0.5';
+        clockOutBtn.style.cursor = 'not-allowed';
+    }
 }
 
 function displayEmployeeRecords(records) {
@@ -301,20 +430,79 @@ function displayEmployeeRecords(records) {
         return;
     }
     
-    container.innerHTML = records.slice(0, 20).map(record => {
+    // Group records by day
+    const recordsByDay = {};
+    records.slice(0, 100).forEach(record => {
         const date = new Date(record.punch_time);
-        const typeClass = record.punch_type.replace('_', '-');
-        const hasNotes = record.notes && record.notes.trim().length > 0;
-        return `
-            <div class="record-item">
-                <div>
-                    <span class="record-type ${typeClass}">${formatPunchType(record.punch_type)}</span>
-                    <span style="margin-left: 15px;">${formatDateTime(date)}</span>
-                    ${hasNotes ? `<div style="margin-top: 5px; padding: 8px; background: #f8f9fa; border-left: 3px solid #667eea; font-size: 13px; color: #555;"><strong>Note:</strong> ${record.notes.replace(/\n/g, '<br>')}</div>` : ''}
+        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+        
+        if (!recordsByDay[dateStr]) {
+            recordsByDay[dateStr] = [];
+        }
+        recordsByDay[dateStr].push(record);
+    });
+    
+    // Sort days (most recent first)
+    const sortedDays = Object.keys(recordsByDay).sort((a, b) => new Date(b) - new Date(a));
+    
+    // Generate HTML for each day
+    const daysHtml = sortedDays.map(dateStr => {
+        const dayRecords = recordsByDay[dateStr].sort((a, b) => 
+            new Date(a.punch_time) - new Date(b.punch_time)
+        );
+        
+        // Calculate total hours for the day
+        let clockIn = null;
+        let clockOut = null;
+        let lunchIn = null;
+        let lunchOut = null;
+        
+        dayRecords.forEach(record => {
+            const punchTime = new Date(record.punch_time);
+            if (record.punch_type === 'clock_in') clockIn = punchTime;
+            if (record.punch_type === 'clock_out') clockOut = punchTime;
+            if (record.punch_type === 'lunch_in') lunchIn = punchTime;
+            if (record.punch_type === 'lunch_out') lunchOut = punchTime;
+        });
+        
+        let totalHours = 0;
+        if (clockIn && clockOut) {
+            totalHours = (clockOut - clockIn) / (1000 * 60 * 60);
+            if (lunchIn && lunchOut) {
+                const lunchHours = (lunchOut - lunchIn) / (1000 * 60 * 60);
+                totalHours -= lunchHours;
+            }
+            totalHours = Math.max(0, totalHours);
+        }
+        
+        const displayDate = formatDate(dateStr);
+        const punchesHtml = dayRecords.map(record => {
+            const date = new Date(record.punch_time);
+            const typeClass = record.punch_type.replace('_', '-');
+            const hasNotes = record.notes && record.notes.trim().length > 0;
+            return `
+                <div class="record-item" style="margin-bottom: 8px;">
+                    <div>
+                        <span class="record-type ${typeClass}">${formatPunchType(record.punch_type)}</span>
+                        <span style="margin-left: 15px;">${formatDateTime(date)}</span>
+                        ${hasNotes ? `<div style="margin-top: 5px; padding: 8px; background: #f8f9fa; border-left: 3px solid #667eea; font-size: 13px; color: #555;"><strong>Note:</strong> ${record.notes.replace(/\n/g, '<br>')}</div>` : ''}
+                    </div>
                 </div>
+            `;
+        }).join('');
+        
+        return `
+            <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="margin: 0; color: #333; font-size: 18px;">${displayDate}</h4>
+                    <div style="font-weight: bold; font-size: 16px; color: #667eea;">Total Hours: ${totalHours.toFixed(2)}</div>
+                </div>
+                <div>${punchesHtml}</div>
             </div>
         `;
     }).join('');
+    
+    container.innerHTML = daysHtml;
 }
 
 // Manager Functions
@@ -351,9 +539,12 @@ function displayEmployees(employeesList) {
         <div class="employee-card">
             <div class="employee-info">
                 <h4>${emp.name}</h4>
-                <p>Employee #: ${emp.employee_number}${emp.email ? ` | Email: ${emp.email}` : ''}</p>
+                <p>Employee #: ${emp.employee_number}${emp.email ? ` | Email: ${emp.email}` : ''}${emp.phone ? ` | Phone: ${emp.phone}` : ''}</p>
             </div>
-            <button class="btn btn-danger" onclick="removeEmployee(${emp.id})">Remove</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" onclick="editEmployee(${emp.id})">Edit</button>
+                <button class="btn btn-danger" onclick="removeEmployee(${emp.id})">Remove</button>
+            </div>
         </div>
     `).join('');
 }
@@ -383,6 +574,237 @@ function loadEmployeesForReport() {
                 data.map(emp => `<option value="${emp.id}">${emp.name}</option>`).join('');
             select.value = currentValue;
         });
+}
+
+function loadEmployeesForEditPunches() {
+    fetch(`${API_BASE}/employees`, {
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('edit-punches-employee');
+            if (select) {
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">All Employees</option>' + 
+                    data.map(emp => `<option value="${emp.id}">${emp.name}</option>`).join('');
+                select.value = currentValue;
+            }
+        });
+}
+
+function loadPunchesForEdit() {
+    const employeeId = document.getElementById('edit-punches-employee').value;
+    const date = document.getElementById('edit-punches-date').value;
+    
+    let url = `${API_BASE}/punches?`;
+    if (employeeId) {
+        url += `employee_id=${employeeId}&`;
+    }
+    if (date) {
+        url += `start_date=${date}&end_date=${date}`;
+    }
+    
+    fetch(url, {
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            displayPunchesForEdit(data);
+        })
+        .catch(err => {
+            showMessage('Error loading punches', 'error');
+        });
+}
+
+function displayPunchesForEdit(punches) {
+    const container = document.getElementById('edit-punches-list');
+    if (!punches || punches.length === 0) {
+        container.innerHTML = '<p>No punches found.</p>';
+        return;
+    }
+    
+    container.innerHTML = punches.slice(0, 50).map(punch => {
+        const date = new Date(punch.punch_time);
+        const typeClass = punch.punch_type.replace('_', '-');
+        return `
+            <div class="employee-card" style="margin-bottom: 15px;">
+                <div style="flex: 1;">
+                    <h4>${punch.employee_name || 'Employee'} (${punch.employee_number || ''})</h4>
+                    <p>
+                        <span class="record-type ${typeClass}">${formatPunchType(punch.punch_type)}</span>
+                        <span style="margin-left: 15px;">${formatDateTime(date)}</span>
+                        ${punch.notes ? `<div style="margin-top: 5px; color: #666;">Note: ${punch.notes}</div>` : ''}
+                    </p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" onclick="editPunch(${punch.id})">Edit</button>
+                    <button class="btn btn-danger" onclick="deletePunch(${punch.id})">Delete</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function editPunch(id) {
+    showMessage('Edit punch functionality coming soon!', 'error');
+}
+
+function deletePunch(id) {
+    if (!confirm('Are you sure you want to delete this punch?')) return;
+    
+    fetch(`${API_BASE}/punches/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showMessage('Punch deleted successfully', 'success');
+                loadPunchesForEdit();
+            } else {
+                showMessage(data.error || 'Failed to delete punch', 'error');
+            }
+        })
+        .catch(err => {
+            showMessage('Error deleting punch', 'error');
+        });
+}
+
+function formatPhoneNumber(phone) {
+    if (!phone) return '';
+    // Remove any existing dashes or non-digits
+    let digits = phone.replace(/\D/g, '');
+    if (digits.length === 0) return '';
+    if (digits.length > 10) digits = digits.slice(0, 10);
+    // Format as XXX-XXX-XXXX
+    if (digits.length >= 6) {
+        return digits.slice(0, 3) + '-' + digits.slice(3, 6) + '-' + digits.slice(6);
+    } else if (digits.length >= 3) {
+        return digits.slice(0, 3) + '-' + digits.slice(3);
+    }
+    return digits;
+}
+
+function editEmployee(id) {
+    // Find the employee data
+    const employee = employees.find(emp => emp.id === id);
+    if (!employee) {
+        showMessage('Employee not found', 'error');
+        return;
+    }
+    
+    // Populate the edit form
+    document.getElementById('edit-emp-id').value = employee.id;
+    document.getElementById('edit-emp-name').value = employee.name || '';
+    document.getElementById('edit-emp-number').value = employee.employee_number || '';
+    document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
+    document.getElementById('edit-emp-password').value = '';
+    
+    // Show the modal
+    document.getElementById('edit-employee-modal').classList.remove('hidden');
+}
+
+function handleEditEmployee(e) {
+    e.preventDefault();
+    const id = parseInt(document.getElementById('edit-emp-id').value);
+    const employee = {
+        name: document.getElementById('edit-emp-name').value,
+        employee_number: document.getElementById('edit-emp-number').value,
+        phone: document.getElementById('edit-emp-phone').value
+    };
+    const newPassword = document.getElementById('edit-emp-password').value.trim();
+    
+    // Update employee info
+    fetch(`${API_BASE}/employees/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(employee),
+        credentials: 'include'
+    })
+    .then(async res => {
+        const contentType = res.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+            data = await res.json();
+        } else {
+            const text = await res.text();
+            throw new Error(text || 'Server error');
+        }
+        
+        if (!res.ok) {
+            throw new Error(data.error || 'Failed to update employee');
+        }
+        
+        return data;
+    })
+    .then(data => {
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        if (data.success) {
+            // If password was provided, update it
+            if (newPassword) {
+                return fetch(`${API_BASE}/employees/${id}/password`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: newPassword }),
+                    credentials: 'include'
+                })
+                .then(async res => {
+                    const contentType = res.headers.get('content-type');
+                    let pwdData;
+                    if (contentType && contentType.includes('application/json')) {
+                        pwdData = await res.json();
+                    } else {
+                        const text = await res.text();
+                        throw new Error(text || 'Server error');
+                    }
+                    
+                    if (!res.ok) {
+                        throw new Error(pwdData.error || 'Failed to change password');
+                    }
+                    
+                    return pwdData;
+                })
+                .then(pwdData => {
+                    if (pwdData.success) {
+                        showMessage('Employee updated successfully, password changed', 'success');
+                    } else {
+                        showMessage('Employee updated but password change failed: ' + (pwdData.error || 'Unknown error'), 'error');
+                    }
+                    // Close modal and refresh after password update attempt
+                    document.getElementById('edit-employee-modal').classList.add('hidden');
+                    document.getElementById('edit-employee-form').reset();
+                    loadEmployees();
+                    loadEmployeesForPunch();
+                    loadEmployeesForReport();
+                })
+                .catch(err => {
+                    showMessage('Employee updated but password change failed: ' + (err.message || err), 'error');
+                    // Close modal and refresh even if password update fails
+                    document.getElementById('edit-employee-modal').classList.add('hidden');
+                    document.getElementById('edit-employee-form').reset();
+                    loadEmployees();
+                    loadEmployeesForPunch();
+                    loadEmployeesForReport();
+                });
+            } else {
+                showMessage('Employee updated successfully', 'success');
+                // Close modal and refresh
+                document.getElementById('edit-employee-modal').classList.add('hidden');
+                document.getElementById('edit-employee-form').reset();
+                loadEmployees();
+                loadEmployeesForPunch();
+                loadEmployeesForReport();
+            }
+        } else {
+            showMessage(data.error || 'Failed to update employee', 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error updating employee:', err);
+        showMessage('Error updating employee: ' + (err.message || err), 'error');
+    });
 }
 
 function removeEmployee(id) {
@@ -469,9 +891,20 @@ function handleManualPunch(e) {
 
 function generateReport() {
     const employeeId = document.getElementById('report-employee').value;
-    const weekStart = document.getElementById('report-week').value;
+    const startDate = document.getElementById('report-start-date').value;
+    const endDate = document.getElementById('report-end-date').value;
     
-    let url = `${API_BASE}/reports/weekly?week_start=${weekStart}`;
+    if (!startDate || !endDate) {
+        showMessage('Please select both starting date and end date', 'error');
+        return;
+    }
+    
+    if (new Date(startDate) > new Date(endDate)) {
+        showMessage('Starting date must be before or equal to end date', 'error');
+        return;
+    }
+    
+    let url = `${API_BASE}/reports/weekly?start_date=${startDate}&end_date=${endDate}`;
     if (employeeId) {
         url += `&employee_id=${employeeId}`;
     }
@@ -492,7 +925,7 @@ function displayReport(reportData) {
     const container = document.getElementById('report-results');
     
     if (reportData.length === 0) {
-        container.innerHTML = '<p>No records found for this week.</p>';
+        container.innerHTML = '<p>No records found for the selected date range.</p>';
         return;
     }
     
@@ -537,11 +970,6 @@ function switchTab(tabName) {
         content.classList.remove('active');
     });
     document.getElementById(`${tabName}-tab`).classList.add('active');
-    
-    // Load notes when notes tab is opened
-    if (tabName === 'notes') {
-        loadEmployeeNotes();
-    }
 }
 
 function loadEmployeeNotes() {
@@ -659,6 +1087,73 @@ function showMessage(message, type = 'success') {
     }, 5000);
 }
 
-// Make removeEmployee available globally
+function showGreatDayModal() {
+    const modal = document.getElementById('great-day-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function closeGreatDayModal() {
+    const modal = document.getElementById('great-day-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+function showLunchModal() {
+    const modal = document.getElementById('lunch-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function closeLunchModal() {
+    const modal = document.getElementById('lunch-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+function showWelcomeBackModal() {
+    const modal = document.getElementById('welcome-back-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function closeWelcomeBackModal() {
+    const modal = document.getElementById('welcome-back-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+function showClockOutModal() {
+    const modal = document.getElementById('clock-out-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function closeClockOutModal() {
+    const modal = document.getElementById('clock-out-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// Make popup functions available globally
+window.closeGreatDayModal = closeGreatDayModal;
+window.closeLunchModal = closeLunchModal;
+window.closeWelcomeBackModal = closeWelcomeBackModal;
+window.closeClockOutModal = closeClockOutModal;
+
+// Make removeEmployee and editEmployee available globally
 window.removeEmployee = removeEmployee;
+window.editEmployee = editEmployee;
+window.editPunch = editPunch;
+window.deletePunch = deletePunch;
+window.editPunch = editPunch;
+window.deletePunch = deletePunch;
 

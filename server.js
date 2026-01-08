@@ -243,6 +243,76 @@ app.post('/api/employees', requireManager, (req, res) => {
     });
 });
 
+app.put('/api/employees/:id', requireManager, (req, res) => {
+  const { id } = req.params;
+  const { name, employee_number, email, phone } = req.body;
+  
+  if (!name || !employee_number) {
+    return res.status(400).json({ error: 'Name and employee number are required' });
+  }
+  
+  // Check if employee_number is already taken by another employee
+  db.get("SELECT id FROM employees WHERE employee_number = ? AND id != ? AND active = 1", 
+    [employee_number, id], (err, row) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (row) {
+        return res.status(400).json({ error: 'Employee number already exists' });
+      }
+      
+      // Update employee
+      db.run("UPDATE employees SET name = ?, employee_number = ?, email = ?, phone = ? WHERE id = ?",
+        [name, employee_number, email || null, phone || null, id], function(updateErr) {
+          if (updateErr) {
+            return res.status(500).json({ error: 'Database error: ' + updateErr.message });
+          }
+          
+          // Update username in users table if employee_number changed
+          db.get("SELECT employee_number FROM employees WHERE id = ?", [id], (err, emp) => {
+            if (!err && emp) {
+              db.run("UPDATE users SET username = ? WHERE employee_id = ?", 
+                [employee_number, id], (err) => {
+                  if (err) {
+                    console.error('Error updating username:', err);
+                  }
+                });
+            }
+          });
+          
+          res.json({ success: true });
+        });
+    });
+});
+
+app.put('/api/employees/:id/password', requireManager, (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+  
+  if (!password || password.trim().length === 0) {
+    return res.status(400).json({ error: 'Password is required' });
+  }
+  
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  
+  db.run("UPDATE users SET password = ? WHERE employee_id = ?",
+    [hashedPassword, id], function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Employee user account not found' });
+      }
+      
+      res.json({ success: true });
+    });
+});
+
 app.delete('/api/employees/:id', requireManager, (req, res) => {
   const { id } = req.params;
   
@@ -273,7 +343,7 @@ app.post('/api/punch', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Invalid punch type' });
   }
   
-  db.run("INSERT INTO time_records (employee_id, punch_type, punch_time, notes, created_by) VALUES (?, ?, datetime('now'), ?, ?)",
+  db.run("INSERT INTO time_records (employee_id, punch_type, punch_time, notes, created_by) VALUES (?, ?, datetime('now', 'localtime'), ?, ?)",
     [targetEmployeeId, punch_type, notes || null, userId], function(err) {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -322,23 +392,42 @@ app.get('/api/punches', requireAuth, (req, res) => {
   });
 });
 
+app.delete('/api/punches/:id', requireManager, (req, res) => {
+  const { id } = req.params;
+  
+  db.run("DELETE FROM time_records WHERE id = ?", [id], function(err) {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Punch not found' });
+    }
+    
+    res.json({ success: true });
+  });
+});
+
 // Reports route
 app.get('/api/reports/weekly', requireAuth, (req, res) => {
-  const { employee_id, week_start } = req.query;
+  const { employee_id, start_date, end_date } = req.query;
   
-  // Calculate week start (Monday) if not provided
-  let startDate = week_start;
-  if (!startDate) {
+  // Use provided dates or default to current week
+  let startDate = start_date;
+  let endDateStr = end_date;
+  
+  if (!startDate || !endDateStr) {
+    // Default to current week if dates not provided
     const today = new Date();
     const day = today.getDay();
     const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
     const monday = new Date(today.setDate(diff));
     startDate = monday.toISOString().split('T')[0];
+    
+    const endDate = new Date(monday);
+    endDate.setDate(endDate.getDate() + 6);
+    endDateStr = endDate.toISOString().split('T')[0];
   }
-  
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 6);
-  const endDateStr = endDate.toISOString().split('T')[0];
   
   let query = `
     SELECT 
