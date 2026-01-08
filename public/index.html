@@ -90,6 +90,14 @@
                     <h3>Employee Management</h3>
                     <button id="add-employee-btn" class="btn btn-primary">Add Employee</button>
                 </div>
+                <div class="form-group" style="margin-top: 20px; margin-bottom: 20px;">
+                    <label for="employee-status-filter">Filter by Status</label>
+                    <select id="employee-status-filter">
+                        <option value="active">Active (Default)</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="all">All Employees</option>
+                    </select>
+                </div>
                 <div id="employees-list"></div>
             </div>
             
@@ -234,6 +242,14 @@
                     <label for="edit-emp-password">New Password (leave blank to keep current)</label>
                     <input type="password" id="edit-emp-password" placeholder="Enter new password">
                     <small style="color: #666; font-size: 12px;">Leave blank if you don't want to change the password</small>
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-status">Status *</label>
+                    <select id="edit-emp-status" required>
+                        <option value="1">Active</option>
+                        <option value="0">Inactive</option>
+                    </select>
+                    <small style="color: #666; font-size: 12px;">Inactive employees cannot log in and are hidden from the time clock</small>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-edit-btn">Cancel</button>

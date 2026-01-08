@@ -227,6 +227,12 @@ function setupEventListeners() {
     
     // Company Settings
     document.getElementById('company-settings-form')?.addEventListener('submit', handleCompanySettings);
+    
+    // Employee Status Filter
+    document.getElementById('employee-status-filter')?.addEventListener('change', (e) => {
+        const status = e.target.value;
+        loadEmployees(status);
+    });
 }
 
 function loadEmployeesForLogin() {
@@ -537,8 +543,9 @@ function loadInitialData() {
     }
 }
 
-function loadEmployees() {
-    fetch(`${API_BASE}/employees`, {
+function loadEmployees(status = 'active') {
+    const url = status ? `${API_BASE}/employees?status=${status}` : `${API_BASE}/employees`;
+    fetch(url, {
         credentials: 'include'
     })
         .then(res => res.json())
@@ -558,10 +565,15 @@ function displayEmployees(employeesList) {
         return;
     }
     
-    container.innerHTML = employeesList.map(emp => `
+    container.innerHTML = employeesList.map(emp => {
+        const statusBadge = emp.active === 1 || emp.active === '1' 
+            ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Active</span>'
+            : '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Inactive</span>';
+        
+        return `
         <div class="employee-card">
             <div class="employee-info">
-                <h4>${emp.name}</h4>
+                <h4>${emp.name}${statusBadge}</h4>
                 <p>Employee #: ${emp.employee_number}${emp.email ? ` | Email: ${emp.email}` : ''}${emp.phone ? ` | Phone: ${emp.phone}` : ''}</p>
             </div>
             <div style="display: flex; gap: 10px;">
@@ -569,7 +581,8 @@ function displayEmployees(employeesList) {
                 <button class="btn btn-danger" onclick="removeEmployee(${emp.id})">Remove</button>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function loadEmployeesForPunch() {
@@ -709,19 +722,40 @@ function formatPhoneNumber(phone) {
 }
 
 function editEmployee(id) {
-    // Find the employee data
-    const employee = employees.find(emp => emp.id === id);
+    // Find the employee data - might need to fetch if not in current filtered list
+    let employee = employees.find(emp => emp.id === id);
+    
     if (!employee) {
-        showMessage('Employee not found', 'error');
+        // Employee not in current list, fetch it directly
+        fetch(`${API_BASE}/employees?status=all`, {
+            credentials: 'include'
+        })
+            .then(res => res.json())
+            .then(data => {
+                employee = data.find(emp => emp.id === id);
+                if (employee) {
+                    populateEditForm(employee);
+                } else {
+                    showMessage('Employee not found', 'error');
+                }
+            })
+            .catch(err => {
+                showMessage('Error loading employee', 'error');
+            });
         return;
     }
     
+    populateEditForm(employee);
+}
+
+function populateEditForm(employee) {
     // Populate the edit form
     document.getElementById('edit-emp-id').value = employee.id;
     document.getElementById('edit-emp-name').value = employee.name || '';
     document.getElementById('edit-emp-number').value = employee.employee_number || '';
     document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
     document.getElementById('edit-emp-password').value = '';
+    document.getElementById('edit-emp-status').value = (employee.active === 1 || employee.active === '1') ? '1' : '0';
     
     // Show the modal
     document.getElementById('edit-employee-modal').classList.remove('hidden');
@@ -733,7 +767,8 @@ function handleEditEmployee(e) {
     const employee = {
         name: document.getElementById('edit-emp-name').value,
         employee_number: document.getElementById('edit-emp-number').value,
-        phone: document.getElementById('edit-emp-phone').value
+        phone: document.getElementById('edit-emp-phone').value,
+        active: parseInt(document.getElementById('edit-emp-status').value)
     };
     const newPassword = document.getElementById('edit-emp-password').value.trim();
     
@@ -798,7 +833,9 @@ function handleEditEmployee(e) {
                     // Close modal and refresh after password update attempt
                     document.getElementById('edit-employee-modal').classList.add('hidden');
                     document.getElementById('edit-employee-form').reset();
-                    loadEmployees();
+                    // Reload with current filter
+                    const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                    loadEmployees(currentFilter);
                     loadEmployeesForPunch();
                     loadEmployeesForReport();
                 })
@@ -807,7 +844,9 @@ function handleEditEmployee(e) {
                     // Close modal and refresh even if password update fails
                     document.getElementById('edit-employee-modal').classList.add('hidden');
                     document.getElementById('edit-employee-form').reset();
-                    loadEmployees();
+                    // Reload with current filter
+                    const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                    loadEmployees(currentFilter);
                     loadEmployeesForPunch();
                     loadEmployeesForReport();
                 });
@@ -816,7 +855,9 @@ function handleEditEmployee(e) {
                 // Close modal and refresh
                 document.getElementById('edit-employee-modal').classList.add('hidden');
                 document.getElementById('edit-employee-form').reset();
-                loadEmployees();
+                // Reload with current filter
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter);
                 loadEmployeesForPunch();
                 loadEmployeesForReport();
             }
@@ -841,7 +882,9 @@ function removeEmployee(id) {
         .then(data => {
             if (data.success) {
                 showMessage('Employee removed successfully', 'success');
-                loadEmployees();
+                // Reload with current filter
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter);
                 loadEmployeesForPunch();
                 loadEmployeesForReport();
             }
@@ -867,12 +910,14 @@ function handleAddEmployee(e) {
         credentials: 'include'
     })
     .then(res => res.json())
-    .then(data => {
+        .then(data => {
         if (data.success) {
             showMessage('Employee added successfully! Default password: password123', 'success');
             document.getElementById('add-employee-modal').classList.add('hidden');
             document.getElementById('add-employee-form').reset();
-            loadEmployees();
+            // Reload with current filter
+            const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+            loadEmployees(currentFilter);
             loadEmployeesForPunch();
             loadEmployeesForReport();
         } else {

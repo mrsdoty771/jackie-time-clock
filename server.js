@@ -221,18 +221,38 @@ app.get('/api/employees/public', (req, res) => {
 });
 
 app.get('/api/employees', requireAuth, (req, res) => {
-  const query = req.session.user.role === 'manager' 
-    ? "SELECT * FROM employees WHERE active = 1 ORDER BY name"
-    : "SELECT id, name, employee_number FROM employees WHERE id = ? AND active = 1";
+  const { status } = req.query; // status can be 'active', 'inactive', or 'all'
   
-  const params = req.session.user.role === 'manager' ? [] : [req.session.user.employee_id];
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+  if (req.session.user.role === 'manager') {
+    let query = "SELECT * FROM employees";
+    const params = [];
+    
+    // Add status filter for managers
+    if (status === 'active') {
+      query += " WHERE active = 1";
+    } else if (status === 'inactive') {
+      query += " WHERE active = 0";
     }
-    res.json(rows);
-  });
+    // If status is 'all' or not provided, show all employees
+    
+    query += " ORDER BY name";
+    
+    db.all(query, params, (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(rows);
+    });
+  } else {
+    // Employees can only see themselves and only if active
+    db.all("SELECT id, name, employee_number FROM employees WHERE id = ? AND active = 1", 
+      [req.session.user.employee_id], (err, rows) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        res.json(rows);
+      });
+  }
 });
 
 app.post('/api/employees', requireManager, (req, res) => {
@@ -265,8 +285,8 @@ app.put('/api/employees/:id', requireManager, (req, res) => {
     return res.status(400).json({ error: 'Name and employee number are required' });
   }
   
-  // Check if employee_number is already taken by another employee
-  db.get("SELECT id FROM employees WHERE employee_number = ? AND id != ? AND active = 1", 
+  // Check if employee_number is already taken by another employee (check all, not just active)
+  db.get("SELECT id FROM employees WHERE employee_number = ? AND id != ?", 
     [employee_number, id], (err, row) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -275,27 +295,38 @@ app.put('/api/employees/:id', requireManager, (req, res) => {
         return res.status(400).json({ error: 'Employee number already exists' });
       }
       
-      // Update employee
-      db.run("UPDATE employees SET name = ?, employee_number = ?, email = ?, phone = ? WHERE id = ?",
-        [name, employee_number, email || null, phone || null, id], function(updateErr) {
-          if (updateErr) {
-            return res.status(500).json({ error: 'Database error: ' + updateErr.message });
+      // Update employee (include active status if provided)
+      const activeValue = req.body.active !== undefined ? (req.body.active === true || req.body.active === 1 || req.body.active === '1' ? 1 : 0) : null;
+      let updateQuery = "UPDATE employees SET name = ?, employee_number = ?, email = ?, phone = ?";
+      let updateParams = [name, employee_number, email || null, phone || null];
+      
+      if (activeValue !== null) {
+        updateQuery += ", active = ?";
+        updateParams.push(activeValue);
+      }
+      
+      updateQuery += " WHERE id = ?";
+      updateParams.push(id);
+      
+      db.run(updateQuery, updateParams, function(updateErr) {
+        if (updateErr) {
+          return res.status(500).json({ error: 'Database error: ' + updateErr.message });
+        }
+        
+        // Update username in users table if employee_number changed
+        db.get("SELECT employee_number FROM employees WHERE id = ?", [id], (err, emp) => {
+          if (!err && emp) {
+            db.run("UPDATE users SET username = ? WHERE employee_id = ?", 
+              [employee_number, id], (err) => {
+                if (err) {
+                  console.error('Error updating username:', err);
+                }
+              });
           }
-          
-          // Update username in users table if employee_number changed
-          db.get("SELECT employee_number FROM employees WHERE id = ?", [id], (err, emp) => {
-            if (!err && emp) {
-              db.run("UPDATE users SET username = ? WHERE employee_id = ?", 
-                [employee_number, id], (err) => {
-                  if (err) {
-                    console.error('Error updating username:', err);
-                  }
-                });
-            }
-          });
-          
-          res.json({ success: true });
         });
+        
+        res.json({ success: true });
+      });
     });
 });
 
