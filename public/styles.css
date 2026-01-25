@@ -1,4 +1,4 @@
-/* General Reset */
+/* --- General Reset & Base Styles --- */
 * {
     margin: 0;
     padding: 0;
@@ -13,17 +13,17 @@ body {
     line-height: 1.6;
 }
 
-/* Page Visibility Logic */
+/* --- Page Visibility Logic --- */
 .page {
     display: block;
 }
 
-/* Use !important to ensure 'hidden' always wins */
+/* Use !important to ensure 'hidden' always wins when switching pages */
 .hidden {
     display: none !important;
 }
 
-/* Login Page */
+/* --- Login Page --- */
 .login-container {
     max-width: 450px;
     margin: 80px auto;
@@ -39,7 +39,7 @@ body {
     color: #667eea;
 }
 
-/* Navbar */
+/* --- Navbar --- */
 .navbar {
     background: white;
     padding: 15px 40px;
@@ -54,14 +54,14 @@ body {
     color: #667eea;
 }
 
-/* Container */
+/* --- Container --- */
 .container {
     max-width: 1000px;
     margin: 0 auto;
     padding: 0 20px 40px;
 }
 
-/* Form Styling */
+/* --- Forms & Inputs --- */
 .form-group {
     margin-bottom: 20px;
 }
@@ -81,14 +81,17 @@ body {
     border: 2px solid #e0e0e0;
     border-radius: 5px;
     font-size: 16px;
+    font-family: inherit;
 }
 
-.form-group input:focus {
+.form-group input:focus, 
+.form-group select:focus, 
+.form-group textarea:focus {
     outline: none;
     border-color: #667eea;
 }
 
-/* Buttons */
+/* --- Buttons --- */
 .btn {
     padding: 12px 24px;
     border: none;
@@ -96,22 +99,24 @@ body {
     font-size: 16px;
     cursor: pointer;
     font-weight: 600;
-    transition: 0.3s;
+    transition: all 0.3s;
+    text-align: center;
 }
 
 .btn-primary { background: #667eea; color: white; width: 100%; }
-.btn-success { background: #28a745; color: white; }
-.btn-danger { background: #dc3545; color: white; }
-.btn-warning { background: #ffc107; color: #333; }
-.btn-info { background: #17a2b8; color: white; }
+.btn-success { background: #28a745; color: white; width: 100%; }
+.btn-danger { background: #dc3545; color: white; width: 100%; }
+.btn-warning { background: #ffc107; color: #333; width: 100%; }
+.btn-info { background: #17a2b8; color: white; width: 100%; }
 .btn-secondary { background: #6c757d; color: white; }
 
 .btn:hover {
     opacity: 0.9;
     transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-/* Sections */
+/* --- Sections & Cards --- */
 .punch-section, .records-section, .tab-content {
     background: white;
     padding: 25px;
@@ -126,12 +131,13 @@ body {
     gap: 15px;
 }
 
-/* Tabs */
+/* --- Manager Tabs --- */
 .tabs {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
     overflow-x: auto;
+    padding-bottom: 5px;
 }
 
 .tab-btn {
@@ -150,15 +156,15 @@ body {
     font-weight: bold;
 }
 
-/* Modals & Popups */
+/* --- Modals & Popups (Centered) --- */
 .modal, .popup-modal {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0,0,0,0.6);
-    display: flex; /* Changed from block to flex */
+    background: rgba(0,0,0,0.7);
+    display: flex; /* Centering content */
     justify-content: center;
     align-items: center;
     z-index: 9999;
@@ -166,26 +172,30 @@ body {
 
 .modal-content, .popup-modal-content {
     background: white;
-    padding: 30px;
-    border-radius: 12px;
+    padding: 40px;
+    border-radius: 15px;
     width: 90%;
-    max-width: 400px;
+    max-width: 450px;
     text-align: center;
     position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 
-/* Employee List Cards */
-.employee-card {
-    border-bottom: 1px solid #eee;
-    padding: 15px 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+/* --- Error/Success Messages --- */
+.error-message {
+    color: #dc3545;
+    margin-top: 15px;
+    text-align: center;
+    font-weight: bold;
 }
 
-/* Responsive */
+/* --- Responsive Layout --- */
 @media (max-width: 600px) {
     .punch-buttons {
         grid-template-columns: 1fr;
+    }
+    .navbar {
+        flex-direction: column;
+        padding: 20px;
     }
 }
