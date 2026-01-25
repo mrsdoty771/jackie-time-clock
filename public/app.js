@@ -235,24 +235,69 @@ function setupEventListeners() {
     });
 }
 
-function loadEmployeesForLogin() {
+// Login dropdown population (uses localStorage)
+const EMPLOYEE_STORAGE_KEY = 'timeclock.employees.public';
+
+function getEmployeesFromLocalStorage() {
+    try {
+        const raw = localStorage.getItem(EMPLOYEE_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function setEmployeesToLocalStorage(employeeList) {
+    try {
+        localStorage.setItem(EMPLOYEE_STORAGE_KEY, JSON.stringify(employeeList || []));
+    } catch {
+        // Ignore storage errors (private mode, quota exceeded, etc.)
+    }
+}
+
+// Clears and rebuilds the dropdown from localStorage every time it's called
+function populateUserDropdown() {
+    const select = document.getElementById('user-select');
+    if (!select) return;
+
+    // Clear the dropdown completely
+    select.innerHTML = '';
+
+    // Re-add base options
+    select.appendChild(new Option('-- Select Name --', ''));
+    select.appendChild(new Option('Admin (Manager)', 'admin'));
+
+    // Load employees from localStorage and add them
+    const employeesFromStorage = getEmployeesFromLocalStorage()
+        .filter(emp => emp && emp.id != null && emp.name)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+    employeesFromStorage.forEach(emp => {
+        select.appendChild(new Option(emp.name, `emp_${emp.id}`));
+    });
+}
+
+function refreshEmployeesCacheAndDropdown() {
+    // Pull from server, save to localStorage, then repopulate from localStorage
     fetch(`${API_BASE}/employees/public`)
         .then(res => res.json())
         .then(data => {
-            const select = document.getElementById('user-select');
-            if (select) {
-                // Keep the admin option and add employees
-                const employeeOptions = data.map(emp => 
-                    `<option value="emp_${emp.id}">${emp.name}</option>`
-                ).join('');
-                select.innerHTML = '<option value="">-- Select Name --</option>' + 
-                    '<option value="admin">Admin (Manager)</option>' + 
-                    employeeOptions;
-            }
+            setEmployeesToLocalStorage(data);
+            populateUserDropdown();
         })
         .catch(err => {
             console.error('Error loading employees:', err);
+            // Still ensure dropdown is populated from whatever is in localStorage
+            populateUserDropdown();
         });
+}
+
+function loadEmployeesForLogin() {
+    // Always rebuild from localStorage first (fast, consistent)
+    populateUserDropdown();
+    // Then refresh localStorage from the server and rebuild again
+    refreshEmployeesCacheAndDropdown();
 }
 
 function handleLogin(e) {
@@ -920,6 +965,8 @@ function handleAddEmployee(e) {
             loadEmployees(currentFilter);
             loadEmployeesForPunch();
             loadEmployeesForReport();
+            // Keep login dropdown in sync (rebuilds from localStorage after refresh)
+            refreshEmployeesCacheAndDropdown();
         } else {
             showMessage(data.error || 'Failed to add employee', 'error');
         }
