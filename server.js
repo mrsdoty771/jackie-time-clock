@@ -2,813 +2,120 @@ const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
-const sqlite3 = require('sqlite3').verbose();
+const mongoose = require('mongoose');
 const path = require('path');
-const os = require('os');
+const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const authRoutes = require('./routes/authRoutes');
+const employeeRoutes = require('./routes/employeeRoutes');
+const punchRoutes = require('./routes/punchRoutes');
+const companySettingsRoutes = require('./routes/companySettingsRoutes');
+const reportsRoutes = require('./routes/reportsRoutes');
+const User = require('./models/User');
+const CompanySettings = require('./models/CompanySettings');
+
+async function connectMongo() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error('DATABASE_URL is not set');
+  }
+  await mongoose.connect(url, { serverSelectionTimeoutMS: 10000 });
+  console.log('Connected to MongoDB');
+}
+
+async function seedDefaultCompanyAndAdmin() {
+  const companyId = String(process.env.DEFAULT_COMPANY_ID || '').trim();
+  const adminUsername = String(process.env.DEFAULT_ADMIN_USERNAME || '').trim();
+  const adminPassword = String(process.env.DEFAULT_ADMIN_PASSWORD || '').trim();
+  const companyName = String(process.env.DEFAULT_COMPANY_NAME || '').trim();
+
+  // Seed is optional: only runs if all required env vars exist.
+  if (!companyId || !adminUsername || !adminPassword) return;
+
+  const existingAdmin = await User.findOne({ companyId, username: adminUsername, role: 'manager' }).lean();
+  if (!existingAdmin) {
+    await User.create({
+      companyId,
+      username: adminUsername,
+      role: 'manager',
+      password: bcrypt.hashSync(adminPassword, 10),
+    });
+    console.log(`Seeded default manager user for companyId=${companyId}`);
+  }
+
+  if (companyName) {
+    await CompanySettings.findOneAndUpdate(
+      { companyId },
+      { $setOnInsert: { companyName } },
+      { upsert: true, new: false }
+    ).lean();
+  }
+}
+
 // Middleware
+app.set('trust proxy', 1);
+app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(session({
-  secret: 'time-clock-secret-key-change-in-production',
-  resave: true, // Changed to true to help maintain session
-  saveUninitialized: false,
-  cookie: { 
-    secure: false, 
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: true,
-    sameSite: 'lax' // Helps with cookie handling
-  },
-  name: 'timeclock.sid' // Explicit session name
-}));
-// Note: express.static is added after API routes to ensure API routes are matched first
-
-// Database initialization
-const db = new sqlite3.Database('./timeclock.db', (err) => {
-  if (err) {
-    console.error('Error opening database:', err);
-  } else {
-    console.log('Connected to SQLite database');
-    initializeDatabase();
-  }
-});
-
-function initializeDatabase() {
-  // Users table (for login)
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'employee',
-    employee_id INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // Employees table
-  db.run(`CREATE TABLE IF NOT EXISTS employees (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    employee_number TEXT UNIQUE,
-    email TEXT,
-    phone TEXT,
-    active INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // Time records table
-  db.run(`CREATE TABLE IF NOT EXISTS time_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_id INTEGER NOT NULL,
-    punch_type TEXT NOT NULL,
-    punch_time DATETIME NOT NULL,
-    notes TEXT,
-    created_by INTEGER,
-    FOREIGN KEY (employee_id) REFERENCES employees(id),
-    FOREIGN KEY (created_by) REFERENCES users(id)
-  )`);
-
-  // Employee notes table
-  db.run(`CREATE TABLE IF NOT EXISTS employee_notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    employee_id INTEGER NOT NULL,
-    note_text TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    read_status INTEGER DEFAULT 0,
-    FOREIGN KEY (employee_id) REFERENCES employees(id)
-  )`);
-
-  // Company settings table
-  db.run(`CREATE TABLE IF NOT EXISTS company_settings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    company_name TEXT DEFAULT 'MVC',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // Initialize company settings with default value if not exists
-  db.get("SELECT * FROM company_settings LIMIT 1", (err, row) => {
-    if (!row) {
-      db.run("INSERT INTO company_settings (company_name) VALUES (?)", ['MVC']);
-    }
-  });
-
-  // Create default admin user if it doesn't exist
-  db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
-    if (!row) {
-      const hashedPassword = bcrypt.hashSync('admin123', 10);
-      db.run("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-        ['admin', hashedPassword, 'manager']);
-      console.log('Default admin user created: username=admin, password=admin123');
-    }
-  });
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET) {
+  console.error('SESSION_SECRET is not set');
+  process.exit(1);
 }
+app.use(
+  session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+    name: 'timeclock.sid',
+  })
+);
 
-// Authentication middleware
-function requireAuth(req, res, next) {
-  // Always set JSON content type for API routes
-  res.setHeader('Content-Type', 'application/json');
-  
-  if (req.session.user) {
-    next();
-  } else {
-    // Ensure we return JSON, not HTML
-    console.log('Auth failed - no session user. Session:', req.session);
-    return res.status(401).json({ error: 'Unauthorized - Please log in' });
-  }
-}
+// Routes
+app.use('/api', authRoutes);
+app.use('/api', employeeRoutes);
+app.use('/api', punchRoutes);
+app.use('/api', companySettingsRoutes);
+app.use('/api', reportsRoutes);
 
-function requireManager(req, res, next) {
-  if (req.session.user && req.session.user.role === 'manager') {
-    next();
-  } else {
-    res.status(403).json({ error: 'Manager access required' });
-  }
-}
+// Static files AFTER API routes
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Auth routes
-app.post('/api/login', (req, res) => {
-  const { username, password, employee_id } = req.body;
-  
-  let query;
-  let params;
-  
-  // Support both username (manager) and employee_id (employee) login
-  if (employee_id) {
-    query = "SELECT u.*, e.name as employee_name FROM users u JOIN employees e ON u.employee_id = e.id WHERE u.employee_id = ? AND e.active = 1";
-    params = [employee_id];
-  } else if (username) {
-    query = "SELECT * FROM users WHERE username = ?";
-    params = [username];
-  } else {
-    return res.status(400).json({ error: 'Username or employee ID required' });
-  }
-  
-  db.get(query, params, (err, user) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    
-    // Ensure employee_id is set correctly
-    let finalEmployeeId = user.employee_id;
-    
-    // If logging in with employee_id but user.employee_id is null, use the provided employee_id
-    if (!finalEmployeeId && employee_id) {
-      finalEmployeeId = employee_id;
-    }
-    
-    req.session.user = {
-      id: user.id,
-      username: user.username || user.employee_name,
-      role: user.role,
-      employee_id: finalEmployeeId,
-      employee_name: user.employee_name || null
-    };
-    
-    console.log('Login successful - session user:', req.session.user);
-    
-    res.json({ success: true, user: req.session.user });
-  });
+// SPA fallback for any non-API route
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  return res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.post('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ success: true });
-});
-
-app.get('/api/me', (req, res) => {
-  // Don't require auth here - just return what's in session
-  res.setHeader('Content-Type', 'application/json');
-  
-  if (!req.session.user) {
-    return res.json({ user: null });
-  }
-  
-  // Refresh session expiration
-  req.session.touch();
-  
-  // If employee, get their name from employees table
-  if (req.session.user.employee_id) {
-    db.get("SELECT name FROM employees WHERE id = ?", [req.session.user.employee_id], (err, emp) => {
-      if (err || !emp) {
-        return res.json({ user: req.session.user });
-      }
-      const userWithName = {
-        ...req.session.user,
-        employee_name: emp.name
-      };
-      res.json({ user: userWithName });
-    });
-  } else {
-    res.json({ user: req.session.user });
-  }
-});
-
-// Employee routes
-// Public endpoint for login dropdown (only returns id, name, employee_number)
-app.get('/api/employees/public', (req, res) => {
-  db.all("SELECT id, name, employee_number FROM employees WHERE active = 1 ORDER BY name", [], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
-});
-
-app.get('/api/employees', requireAuth, (req, res) => {
-  const { status } = req.query; // status can be 'active', 'inactive', or 'all'
-  
-  if (req.session.user.role === 'manager') {
-    let query = "SELECT * FROM employees";
-    const params = [];
-    
-    // Add status filter for managers
-    if (status === 'active') {
-      query += " WHERE active = 1";
-    } else if (status === 'inactive') {
-      query += " WHERE active = 0";
-    }
-    // If status is 'all' or not provided, show all employees
-    
-    query += " ORDER BY name";
-    
-    db.all(query, params, (err, rows) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json(rows);
-    });
-  } else {
-    // Employees can only see themselves and only if active
-    db.all("SELECT id, name, employee_number FROM employees WHERE id = ? AND active = 1", 
-      [req.session.user.employee_id], (err, rows) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        res.json(rows);
-      });
-  }
-});
-
-app.post('/api/employees', requireManager, (req, res) => {
-  const { name, employee_number, email, phone } = req.body;
-  
-  db.run("INSERT INTO employees (name, employee_number, email, phone) VALUES (?, ?, ?, ?)",
-    [name, employee_number, email, phone], function(err) {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-      
-      // Create user account for employee
-      const defaultPassword = bcrypt.hashSync('password123', 10);
-      db.run("INSERT INTO users (username, password, role, employee_id) VALUES (?, ?, ?, ?)",
-        [employee_number, defaultPassword, 'employee', this.lastID], (err) => {
-          if (err) {
-            console.error('Error creating user account:', err);
-          }
-        });
-      
-      res.json({ success: true, id: this.lastID });
-    });
-});
-
-app.put('/api/employees/:id', requireManager, (req, res) => {
-  const { id } = req.params;
-  const { name, employee_number, email, phone } = req.body;
-  
-  if (!name || !employee_number) {
-    return res.status(400).json({ error: 'Name and employee number are required' });
-  }
-  
-  // Check if employee_number is already taken by another employee (check all, not just active)
-  db.get("SELECT id FROM employees WHERE employee_number = ? AND id != ?", 
-    [employee_number, id], (err, row) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      if (row) {
-        return res.status(400).json({ error: 'Employee number already exists' });
-      }
-      
-      // Update employee (include active status if provided)
-      const activeValue = req.body.active !== undefined ? (req.body.active === true || req.body.active === 1 || req.body.active === '1' ? 1 : 0) : null;
-      let updateQuery = "UPDATE employees SET name = ?, employee_number = ?, email = ?, phone = ?";
-      let updateParams = [name, employee_number, email || null, phone || null];
-      
-      if (activeValue !== null) {
-        updateQuery += ", active = ?";
-        updateParams.push(activeValue);
-      }
-      
-      updateQuery += " WHERE id = ?";
-      updateParams.push(id);
-      
-      db.run(updateQuery, updateParams, function(updateErr) {
-        if (updateErr) {
-          return res.status(500).json({ error: 'Database error: ' + updateErr.message });
-        }
-        
-        // Update username in users table if employee_number changed
-        db.get("SELECT employee_number FROM employees WHERE id = ?", [id], (err, emp) => {
-          if (!err && emp) {
-            db.run("UPDATE users SET username = ? WHERE employee_id = ?", 
-              [employee_number, id], (err) => {
-                if (err) {
-                  console.error('Error updating username:', err);
-                }
-              });
-          }
-        });
-        
-        res.json({ success: true });
-      });
-    });
-});
-
-app.put('/api/employees/:id/password', requireManager, (req, res) => {
-  const { id } = req.params;
-  const { password } = req.body;
-  
-  if (!password || password.trim().length === 0) {
-    return res.status(400).json({ error: 'Password is required' });
-  }
-  
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
-  
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  
-  db.run("UPDATE users SET password = ? WHERE employee_id = ?",
-    [hashedPassword, id], function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (this.changes === 0) {
-        return res.status(404).json({ error: 'Employee user account not found' });
-      }
-      
-      res.json({ success: true });
-    });
-});
-
-app.delete('/api/employees/:id', requireManager, (req, res) => {
-  const { id } = req.params;
-  
-  db.run("UPDATE employees SET active = 0 WHERE id = ?", [id], function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json({ success: true });
-  });
-});
-
-// Time punch routes
-app.post('/api/punch', requireAuth, (req, res) => {
-  const { employee_id, punch_type, notes } = req.body;
-  const userId = req.session.user.id;
-  
-  // Employees can only punch themselves, managers can punch anyone
-  const targetEmployeeId = req.session.user.role === 'manager' 
-    ? employee_id 
-    : req.session.user.employee_id;
-  
-  if (!targetEmployeeId) {
-    return res.status(400).json({ error: 'Employee ID required' });
-  }
-  
-  const validTypes = ['clock_in', 'clock_out', 'lunch_in', 'lunch_out'];
-  if (!validTypes.includes(punch_type)) {
-    return res.status(400).json({ error: 'Invalid punch type' });
-  }
-  
-  db.run("INSERT INTO time_records (employee_id, punch_type, punch_time, notes, created_by) VALUES (?, ?, datetime('now', 'localtime'), ?, ?)",
-    [targetEmployeeId, punch_type, notes || null, userId], function(err) {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ success: true, id: this.lastID });
-    });
-});
-
-app.get('/api/punches', requireAuth, (req, res) => {
-  const { employee_id, start_date, end_date } = req.query;
-  
-  let query = `
-    SELECT tr.*, e.name as employee_name, e.employee_number
-    FROM time_records tr
-    JOIN employees e ON tr.employee_id = e.id
-    WHERE 1=1
-  `;
-  const params = [];
-  
-  // Employees can only see their own records
-  if (req.session.user.role === 'employee') {
-    query += " AND tr.employee_id = ?";
-    params.push(req.session.user.employee_id);
-  } else if (employee_id) {
-    query += " AND tr.employee_id = ?";
-    params.push(employee_id);
-  }
-  
-  if (start_date) {
-    query += " AND date(tr.punch_time) >= ?";
-    params.push(start_date);
-  }
-  
-  if (end_date) {
-    query += " AND date(tr.punch_time) <= ?";
-    params.push(end_date);
-  }
-  
-  query += " ORDER BY tr.punch_time DESC LIMIT 500";
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
-});
-
-app.delete('/api/punches/:id', requireManager, (req, res) => {
-  const { id } = req.params;
-  
-  db.run("DELETE FROM time_records WHERE id = ?", [id], function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Punch not found' });
-    }
-    
-    res.json({ success: true });
-  });
-});
-
-// Reports route
-app.get('/api/reports/weekly', requireAuth, (req, res) => {
-  const { employee_id, start_date, end_date } = req.query;
-  
-  // Use provided dates or default to current week
-  let startDate = start_date;
-  let endDateStr = end_date;
-  
-  if (!startDate || !endDateStr) {
-    // Default to current week if dates not provided
-    const today = new Date();
-    const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-    const monday = new Date(today.setDate(diff));
-    startDate = monday.toISOString().split('T')[0];
-    
-    const endDate = new Date(monday);
-    endDate.setDate(endDate.getDate() + 6);
-    endDateStr = endDate.toISOString().split('T')[0];
-  }
-  
-  let query = `
-    SELECT 
-      e.id as employee_id,
-      e.name as employee_name,
-      e.employee_number,
-      date(tr.punch_time) as date,
-      tr.punch_type,
-      tr.punch_time,
-      tr.notes
-    FROM time_records tr
-    JOIN employees e ON tr.employee_id = e.id
-    WHERE date(tr.punch_time) >= ? AND date(tr.punch_time) <= ?
-  `;
-  const params = [startDate, endDateStr];
-  
-  if (req.session.user.role === 'employee') {
-    query += " AND e.id = ?";
-    params.push(req.session.user.employee_id);
-  } else if (employee_id) {
-    query += " AND e.id = ?";
-    params.push(employee_id);
-  }
-  
-  query += " ORDER BY e.name, tr.punch_time";
-  
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    // Process records to calculate hours
-    const report = calculateWeeklyHours(rows);
-    res.json(report);
-  });
-});
-
-function calculateWeeklyHours(records) {
-  const employeeMap = {};
-  
-  records.forEach(record => {
-    const key = record.employee_id;
-    if (!employeeMap[key]) {
-      employeeMap[key] = {
-        employee_id: record.employee_id,
-        employee_name: record.employee_name,
-        employee_number: record.employee_number,
-        days: {},
-        total_hours: 0
-      };
-    }
-    
-    const date = record.date;
-    if (!employeeMap[key].days[date]) {
-      employeeMap[key].days[date] = {
-        date: date,
-        punches: [],
-        hours: 0
-      };
-    }
-    
-    employeeMap[key].days[date].punches.push({
-      type: record.punch_type,
-      time: record.punch_time,
-      notes: record.notes
-    });
-  });
-  
-  // Calculate hours for each day
-  Object.values(employeeMap).forEach(emp => {
-    Object.values(emp.days).forEach(day => {
-      let clockIn = null;
-      let clockOut = null;
-      let lunchIn = null;
-      let lunchOut = null;
-      
-      day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
-      
-      day.punches.forEach(punch => {
-        if (punch.type === 'clock_in') clockIn = new Date(punch.time);
-        if (punch.type === 'clock_out') clockOut = new Date(punch.time);
-        if (punch.type === 'lunch_in') lunchIn = new Date(punch.time);
-        if (punch.type === 'lunch_out') lunchOut = new Date(punch.time);
-      });
-      
-      let hours = 0;
-      if (clockIn && clockOut) {
-        hours = (clockOut - clockIn) / (1000 * 60 * 60); // Convert to hours
-        
-        // Subtract lunch time if applicable
-        if (lunchIn && lunchOut) {
-          const lunchHours = (lunchOut - lunchIn) / (1000 * 60 * 60);
-          hours -= lunchHours;
-        }
-        
-        hours = Math.max(0, hours); // Ensure non-negative
-      }
-      
-      day.hours = parseFloat(hours.toFixed(2));
-      emp.total_hours += day.hours;
-    });
-    
-    emp.total_hours = parseFloat(emp.total_hours.toFixed(2));
-  });
-  
-  return Object.values(employeeMap);
-}
-
-// Employee Notes routes
-app.post('/api/notes', requireAuth, (req, res) => {
-  // Ensure we always return JSON
-  res.setHeader('Content-Type', 'application/json');
-  
-  // Check session exists before accessing
-  if (!req.session || !req.session.user) {
-    console.error('Note submission: Session missing after requireAuth');
-    return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  }
-  
-  // Refresh session expiration
-  req.session.touch();
-  
-  const { note_text } = req.body;
-  const employee_id = req.session.user.employee_id;
-  
-  // Debug logging
-  console.log('Note submission - employee_id:', employee_id);
-  console.log('Note submission - session user:', req.session.user);
-  console.log('Note submission - note_text:', note_text);
-  
-  if (!employee_id) {
-    console.error('Note submission failed: No employee_id in session');
-    return res.status(400).json({ error: 'Employee ID required. Please log out and log back in.' });
-  }
-  
-  if (!note_text || note_text.trim().length === 0) {
-    return res.status(400).json({ error: 'Note text is required' });
-  }
-  
-  // First, find the employee's most recent time record
-  db.get("SELECT id, notes FROM time_records WHERE employee_id = ? ORDER BY punch_time DESC LIMIT 1",
-    [employee_id], (err, lastRecord) => {
-      if (err) {
-        console.error('Database error finding last record:', err);
-        return res.status(500).json({ error: 'Database error: ' + err.message });
-      }
-      
-      // Update the last time record with the note
-      if (lastRecord) {
-        const existingNotes = lastRecord.notes ? lastRecord.notes + '\n' : '';
-        const updatedNotes = existingNotes + note_text.trim();
-        
-        db.run("UPDATE time_records SET notes = ? WHERE id = ?",
-          [updatedNotes, lastRecord.id], function(updateErr) {
-            if (updateErr) {
-              console.error('Database error updating time record:', updateErr);
-              return res.status(500).json({ error: 'Database error: ' + updateErr.message });
-            }
-            
-            // Also save to employee_notes table for manager viewing
-            db.run("INSERT INTO employee_notes (employee_id, note_text) VALUES (?, ?)",
-              [employee_id, note_text.trim()], function(insertErr) {
-                if (insertErr) {
-                  console.error('Database error inserting note:', insertErr);
-                  // Don't fail the request if this fails, the time record was updated
-                }
-                res.json({ success: true, time_record_id: lastRecord.id, note_added: true });
-              });
-          });
-      } else {
-        // No time records yet, just save to employee_notes
-        db.run("INSERT INTO employee_notes (employee_id, note_text) VALUES (?, ?)",
-          [employee_id, note_text.trim()], function(insertErr) {
-            if (insertErr) {
-              console.error('Database error inserting note:', insertErr);
-              return res.status(500).json({ error: 'Database error: ' + insertErr.message });
-            }
-            res.json({ success: true, id: this.lastID, note_added: true, message: 'Note saved. No time records found to attach it to.' });
-          });
-      }
-    });
-});
-
-app.get('/api/notes', requireAuth, (req, res) => {
-  // Ensure we always return JSON
-  res.setHeader('Content-Type', 'application/json');
-  
-  // Check session exists
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  }
-  
-  if (req.session.user.role === 'manager') {
-    // Managers can see all notes
-    const query = `
-      SELECT en.*, e.name as employee_name, e.employee_number
-      FROM employee_notes en
-      JOIN employees e ON en.employee_id = e.id
-      ORDER BY en.created_at DESC
-      LIMIT 100
-    `;
-    db.all(query, [], (err, rows) => {
-      if (err) {
-        console.error('Error loading notes:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json(rows);
-    });
-  } else {
-    // Employees can only see their own notes
-    const employee_id = req.session.user.employee_id;
-    if (!employee_id) {
-      return res.status(400).json({ error: 'Employee ID not found in session' });
-    }
-    db.all("SELECT * FROM employee_notes WHERE employee_id = ? ORDER BY created_at DESC LIMIT 50",
-      [employee_id], (err, rows) => {
-        if (err) {
-          console.error('Error loading employee notes:', err);
-          return res.status(500).json({ error: 'Database error' });
-        }
-        res.json(rows);
-      });
-  }
-});
-
-app.put('/api/notes/:id/read', requireManager, (req, res) => {
-  const { id } = req.params;
-  db.run("UPDATE employee_notes SET read_status = 1 WHERE id = ?", [id], function(err) {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json({ success: true });
-  });
-});
-
-// Company Settings routes
-app.get('/api/company-settings', (req, res) => {
-  // Public endpoint - no auth required for login page
-  db.get("SELECT * FROM company_settings LIMIT 1", (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    // Return default if no settings exist
-    if (!row) {
-      return res.json({ company_name: 'MVC' });
-    }
-    res.json({ company_name: row.company_name || 'MVC' });
-  });
-});
-
-app.put('/api/company-settings', requireManager, (req, res) => {
-  const { company_name } = req.body;
-  
-  if (!company_name || company_name.trim().length === 0) {
-    return res.status(400).json({ error: 'Company name is required' });
-  }
-  
-  // Update or insert company settings
-  db.get("SELECT * FROM company_settings LIMIT 1", (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    if (row) {
-      // Update existing settings
-      db.run("UPDATE company_settings SET company_name = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-        [company_name.trim(), row.id], function(updateErr) {
-          if (updateErr) {
-            return res.status(500).json({ error: 'Database error: ' + updateErr.message });
-          }
-          res.json({ success: true, company_name: company_name.trim() });
-        });
-    } else {
-      // Insert new settings
-      db.run("INSERT INTO company_settings (company_name) VALUES (?)",
-        [company_name.trim()], function(insertErr) {
-          if (insertErr) {
-            return res.status(500).json({ error: 'Database error: ' + insertErr.message });
-          }
-          res.json({ success: true, company_name: company_name.trim() });
-        });
-    }
-  });
-});
-
-// Serve static files AFTER API routes (so API routes are matched first)
-app.use(express.static('public'));
-
-// Serve main page (must be last, after all API routes)
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Error handling middleware - must be after all routes
+// Error handling
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  console.error('Unhandled error:', err);
   if (req.path.startsWith('/api/')) {
-    res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
-  } else {
-    next(err);
+    return res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   }
+  return next(err);
 });
 
-// Catch-all for undefined API routes - return 404 JSON
-// This must be AFTER all API routes
-app.use('/api/*', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  console.log('404 - API route not found:', req.method, req.path);
-  res.status(404).json({ error: 'API endpoint not found: ' + req.method + ' ' + req.path });
-});
-
-// Get local IP address
-function getLocalIP() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return 'localhost';
-}
-
-app.listen(PORT, '0.0.0.0', () => {
-  const localIP = getLocalIP();
-  console.log('='.repeat(60));
-  console.log(`Time Clock server is running!`);
-  console.log(`Local access:    http://localhost:${PORT}`);
-  console.log(`Network access:  http://${localIP}:${PORT}`);
-  console.log('='.repeat(60));
-  console.log('\nTo access from the internet:');
-  console.log('1. Configure your router to forward port', PORT, 'to this computer');
-  console.log('2. Find your public IP at https://whatismyipaddress.com/');
-  console.log('3. Access via: http://YOUR_PUBLIC_IP:' + PORT);
-  console.log('\n⚠️  Security Note: Change default passwords before exposing to internet!');
-  console.log('='.repeat(60));
-});
-
+connectMongo()
+  .then(() => {
+    return seedDefaultCompanyAndAdmin();
+  })
+  .then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Time Clock server running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });

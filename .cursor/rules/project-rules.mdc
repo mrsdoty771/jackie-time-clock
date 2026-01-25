@@ -1,0 +1,22 @@
+---
+description: "Core project organization and coding standards for Jackie Time Clock"
+globs: "**/*.js"
+alwaysApply: true
+---
+
+# Jackie Time Clock: Project Rules
+
+## 1. Folder Responsibilities
+- **models/**: Only define data schemas (blueprints) here.
+- **controllers/**: Put all business logic (the "thinking") and database queries here.
+- **routes/**: Only define URL paths that point to controllers.
+- **middleware/**: Put security checks and company-separation logic here.
+
+## 2. Multi-Tenant Standard (The Apartment Building Rule)
+- EVERY database query must include a `companyId` filter. 
+- Company 1 (MVC) must never see Company 2 (ALF) data.
+
+## 3. Code Quality
+- Use async/await for all database calls.
+- Never hardcode secrets; always use `process.env` (from the .env file).
+- Keep functions small and clean.

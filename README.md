@@ -19,7 +19,7 @@ A comprehensive employee time clock system with manager controls, reporting, and
 ### Additional Features
 - **Session Management**: Secure login with session-based authentication
 - **Role-Based Access**: Different interfaces for employees and managers
-- **Database Storage**: SQLite database for data persistence
+- **Database Storage**: MongoDB (DigitalOcean Managed MongoDB)
 - **Responsive Design**: Works on desktop and mobile devices
 
 ## Setup Instructions
@@ -45,13 +45,17 @@ A comprehensive employee time clock system with manager controls, reporting, and
 
 ### Default Login Credentials
 
-**Manager Account:**
-- Username: `admin`
-- Password: `admin123`
+This project supports **multi-tenant** usage via `companyId` (the “apartment building” rule).
 
-**Note:** When you add new employees, they will be created with:
-- Username: Their employee number
-- Password: `password123`
+**Default Manager Account (optional seed):**
+- If you set the following env vars, the server will create a manager user on startup if missing:
+  - `DEFAULT_COMPANY_ID`
+  - `DEFAULT_ADMIN_USERNAME`
+  - `DEFAULT_ADMIN_PASSWORD`
+
+**Employee Accounts:**
+- When you add a new employee, the server generates a **temporary password** and returns it to the UI.
+- Managers can change an employee’s password from the Edit Employee modal.
 
 **Important:** Change these default passwords in production!
 
@@ -83,24 +87,24 @@ A comprehensive employee time clock system with manager controls, reporting, and
 
 ## Database
 
-The application uses SQLite and creates a database file (`timeclock.db`) automatically on first run. The database includes:
+The application uses MongoDB. Key collections include:
 
-- **users**: Login credentials and roles
-- **employees**: Employee information
-- **time_records**: All time punches with timestamps
+- **users**: Login credentials, roles, and `companyId`
+- **employees**: Employee records, status, and `companyId`
+- **punches**: Time punches tagged with `companyId`
 
 ## Security Notes
 
-- Default passwords should be changed in production
-- The session secret in `server.js` should be changed for production use
+- Set `SESSION_SECRET` in your environment (required)
+- Use strong passwords and rotate credentials regularly
 - Consider using HTTPS in production
-- Regularly backup the `timeclock.db` file
+- For production scalability, consider using a persistent session store (e.g. Mongo-backed session store)
 
 ## Troubleshooting
 
 - **Port Already in Use**: Change the PORT in `server.js` or set `PORT` environment variable
-- **Database Errors**: Delete `timeclock.db` to reset (this will delete all data)
-- **Login Issues**: Check that the database was initialized correctly
+- **Database Errors**: Verify `DATABASE_URL` is a complete MongoDB connection string
+- **Login Issues**: Verify your user exists for the correct `companyId`
 
 ## File Structure
 
@@ -108,11 +112,16 @@ The application uses SQLite and creates a database file (`timeclock.db`) automat
 .
 ├── server.js          # Backend server and API routes
 ├── package.json       # Dependencies and scripts
-├── timeclock.db       # SQLite database (created automatically)
+├── models/            # Mongoose schemas (blueprints)
+├── controllers/       # Business logic + database queries
+├── routes/            # Express route definitions
+├── middleware/        # Session + companyId guards
+├── .env.example       # Example environment variables (copy to your own .env)
 ├── public/
 │   ├── index.html     # Main HTML file
 │   ├── styles.css     # Styling
-│   └── app.js         # Frontend JavaScript
+│   ├── app.js         # Frontend JavaScript (API-driven)
+│   └── script.js      # Loader entrypoint (included by index.html)
 └── README.md          # This file
 ```
 

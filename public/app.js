@@ -22,7 +22,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function loadCompanyNameForLogin() {
-    fetch(`${API_BASE}/company-settings`)
+    const companyId = getLoginCompanyId();
+    if (!companyId) {
+        updateLoginPageTitle('MVC');
+        return;
+    }
+    fetch(`${API_BASE}/company-settings?companyId=${encodeURIComponent(companyId)}`)
         .then(res => res.json())
         .then(data => {
             const companyName = data.company_name || 'MVC';
@@ -33,6 +38,11 @@ function loadCompanyNameForLogin() {
             // Default to MVC if error
             updateLoginPageTitle('MVC');
         });
+}
+
+function getLoginCompanyId() {
+    const input = document.getElementById('company-id');
+    return input ? input.value.trim() : '';
 }
 
 function initializeWeekStart() {
@@ -139,6 +149,10 @@ function updateEmployeeNameDisplay() {
 function setupEventListeners() {
     // Login
     document.getElementById('login-form').addEventListener('submit', handleLogin);
+    document.getElementById('company-id')?.addEventListener('input', () => {
+        loadCompanyNameForLogin();
+        loadEmployeesForLogin();
+    });
     
     // Logout
     document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
@@ -235,79 +249,46 @@ function setupEventListeners() {
     });
 }
 
-// Login dropdown population (uses localStorage)
-const EMPLOYEE_STORAGE_KEY = 'timeclock.employees.public';
-
-function getEmployeesFromLocalStorage() {
-    try {
-        const raw = localStorage.getItem(EMPLOYEE_STORAGE_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
-}
-
-function setEmployeesToLocalStorage(employeeList) {
-    try {
-        localStorage.setItem(EMPLOYEE_STORAGE_KEY, JSON.stringify(employeeList || []));
-    } catch {
-        // Ignore storage errors (private mode, quota exceeded, etc.)
-    }
-}
-
-// Clears and rebuilds the dropdown from localStorage every time it's called
-function populateUserDropdown() {
+function loadEmployeesForLogin() {
     const select = document.getElementById('user-select');
     if (!select) return;
 
-    // Clear the dropdown completely
-    select.innerHTML = '';
+    // Always clear and rebuild
+    select.innerHTML = '<option value="">-- Select Name --</option>' +
+        '<option value="admin">Admin (Manager)</option>';
 
-    // Re-add base options
-    select.appendChild(new Option('-- Select Name --', ''));
-    select.appendChild(new Option('Admin (Manager)', 'admin'));
+    const companyId = getLoginCompanyId();
+    if (!companyId) return;
 
-    // Load employees from localStorage and add them
-    const employeesFromStorage = getEmployeesFromLocalStorage()
-        .filter(emp => emp && emp.id != null && emp.name)
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-    employeesFromStorage.forEach(emp => {
-        select.appendChild(new Option(emp.name, `emp_${emp.id}`));
-    });
-}
-
-function refreshEmployeesCacheAndDropdown() {
-    // Pull from server, save to localStorage, then repopulate from localStorage
-    fetch(`${API_BASE}/employees/public`)
+    fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`)
         .then(res => res.json())
         .then(data => {
-            setEmployeesToLocalStorage(data);
-            populateUserDropdown();
+            const employeeOptions = (data || []).map(emp =>
+                `<option value="emp_${emp.id}">${emp.name}</option>`
+            ).join('');
+            select.innerHTML = '<option value="">-- Select Name --</option>' +
+                '<option value="admin">Admin (Manager)</option>' +
+                employeeOptions;
         })
         .catch(err => {
             console.error('Error loading employees:', err);
-            // Still ensure dropdown is populated from whatever is in localStorage
-            populateUserDropdown();
         });
-}
-
-function loadEmployeesForLogin() {
-    // Always rebuild from localStorage first (fast, consistent)
-    populateUserDropdown();
-    // Then refresh localStorage from the server and rebuild again
-    refreshEmployeesCacheAndDropdown();
 }
 
 function handleLogin(e) {
     e.preventDefault();
     const selectedValue = document.getElementById('user-select').value;
     const password = document.getElementById('password').value;
+    const companyId = getLoginCompanyId();
     const errorDiv = document.getElementById('login-error');
     
     if (!selectedValue) {
         errorDiv.textContent = 'Please select a name';
+        return;
+    }
+
+    if (!companyId) {
+        errorDiv.textContent = 'Please enter your Company ID';
         return;
     }
     
@@ -316,11 +297,11 @@ function handleLogin(e) {
     // Check if admin or employee
     if (selectedValue === 'admin') {
         // Manager login with username
-        loginData = { username: 'admin', password };
+        loginData = { username: 'admin', password, companyId };
     } else {
         // Employee login with employee_id
         const employeeId = selectedValue.replace('emp_', '');
-        loginData = { employee_id: parseInt(employeeId), password };
+        loginData = { employee_id: employeeId, password, companyId };
     }
     
     fetch(`${API_BASE}/login`, {
@@ -808,7 +789,7 @@ function populateEditForm(employee) {
 
 function handleEditEmployee(e) {
     e.preventDefault();
-    const id = parseInt(document.getElementById('edit-emp-id').value);
+    const id = document.getElementById('edit-emp-id').value;
     const employee = {
         name: document.getElementById('edit-emp-name').value,
         employee_number: document.getElementById('edit-emp-number').value,
@@ -957,7 +938,8 @@ function handleAddEmployee(e) {
     .then(res => res.json())
         .then(data => {
         if (data.success) {
-            showMessage('Employee added successfully! Default password: password123', 'success');
+            const tempPwd = data.temp_password ? ` Temporary password: ${data.temp_password}` : '';
+            showMessage('Employee added successfully!' + tempPwd, 'success');
             document.getElementById('add-employee-modal').classList.add('hidden');
             document.getElementById('add-employee-form').reset();
             // Reload with current filter
@@ -965,8 +947,7 @@ function handleAddEmployee(e) {
             loadEmployees(currentFilter);
             loadEmployeesForPunch();
             loadEmployeesForReport();
-            // Keep login dropdown in sync (rebuilds from localStorage after refresh)
-            refreshEmployeesCacheAndDropdown();
+            // Login dropdown is loaded on the login page based on Company ID input
         } else {
             showMessage(data.error || 'Failed to add employee', 'error');
         }
@@ -979,7 +960,7 @@ function handleAddEmployee(e) {
 function handleManualPunch(e) {
     e.preventDefault();
     const punch = {
-        employee_id: parseInt(document.getElementById('punch-employee').value),
+        employee_id: document.getElementById('punch-employee').value,
         punch_type: document.getElementById('punch-type').value,
         notes: document.getElementById('punch-notes').value.trim() || null
     };
