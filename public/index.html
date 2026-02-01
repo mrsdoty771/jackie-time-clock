@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MVC Time Clock</title>
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
     <div id="login-page" class="page">
         <div class="login-container">
             <h1>MVC Time Clock</h1>
-            <form id="login-form">
+            <form id="login-form" onsubmit="if(typeof handleLogin==='function')handleLogin(event); return false;">
                 <div class="form-group">
                     <label for="company-id">Company ID</label>
                     <input type="text" id="company-id" placeholder="MVC" value="MVC" required>
@@ -298,7 +298,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=5"></script>
 </body>
 </html>
 
