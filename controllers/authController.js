@@ -77,6 +77,12 @@ async function login(req, res) {
     return res.json({ success: true, user: req.session.user });
   } catch (err) {
     console.error('Login error:', err.message || err);
+    const msg = err.message || String(err);
+    if (msg.includes('buffering timed out') || msg.includes('Authentication failed')) {
+      return res.status(503).json({
+        error: 'Database unavailable. Please check that DATABASE_URL is set correctly in your deployment.',
+      });
+    }
     return res.status(500).json({
       error: 'Server error. Check the server logs for details.',
     });
