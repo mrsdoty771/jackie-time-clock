@@ -52,7 +52,16 @@ async function login(req, res) {
       return res.status(400).json({ error: 'Username or employee_id required' });
     }
 
-    if (!bcrypt.compareSync(password, user.password)) {
+    let passwordMatch = false;
+    try {
+      passwordMatch = bcrypt.compareSync(password, user.password);
+    } catch (bcryptErr) {
+      console.error('Password check error (invalid hash?):', bcryptErr.message);
+      return res.status(500).json({
+        error: 'Account setup error. Your account may need to be reset - please contact your administrator.',
+      });
+    }
+    if (!passwordMatch) {
       return res.status(401).json({ error: 'Wrong password. Please try again.' });
     }
 
@@ -67,8 +76,10 @@ async function login(req, res) {
 
     return res.json({ success: true, user: req.session.user });
   } catch (err) {
-    console.error('Login error:', err);
-    return res.status(500).json({ error: 'Server error' });
+    console.error('Login error:', err.message || err);
+    return res.status(500).json({
+      error: 'Server error. Check the server logs for details.',
+    });
   }
 }
 

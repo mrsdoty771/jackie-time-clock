@@ -79,9 +79,14 @@ app.listen(PORT, '0.0.0.0', () => {
       console.log('Connected to MongoDB');
       // Ensure default manager users exist if env vars are set
       const companyId = String(process.env.DEFAULT_COMPANY_ID || '').trim();
+      const forceRecreate = process.env.FORCE_RECREATE_MANAGERS === 'true';
       const adminUsername = String(process.env.DEFAULT_ADMIN_USERNAME || '').trim();
       const adminPassword = String(process.env.DEFAULT_ADMIN_PASSWORD || '').trim();
       if (companyId && adminUsername && adminPassword) {
+        if (forceRecreate) {
+          await User.deleteMany({ companyId, username: adminUsername, role: 'manager' });
+          console.log(`Deleted existing "${adminUsername}" (force recreate).`);
+        }
         const existingAdmin = await User.findOne({ companyId, username: adminUsername, role: 'manager' }).lean();
         if (!existingAdmin) {
           await User.create({
@@ -96,6 +101,10 @@ app.listen(PORT, '0.0.0.0', () => {
       const joshUsername = String(process.env.DEFAULT_MANAGER_2_USERNAME || '').trim();
       const joshPassword = String(process.env.DEFAULT_MANAGER_2_PASSWORD || '').trim();
       if (companyId && joshUsername && joshPassword) {
+        if (forceRecreate) {
+          await User.deleteMany({ companyId, username: joshUsername, role: 'manager' });
+          console.log(`Deleted existing "${joshUsername}" (force recreate).`);
+        }
         const existingJosh = await User.findOne({ companyId, username: joshUsername, role: 'manager' }).lean();
         if (!existingJosh) {
           await User.create({
