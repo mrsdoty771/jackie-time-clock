@@ -358,6 +358,7 @@ function handleLogin(e) {
         }
     })
     .then(data => {
+        console.log('Login response:', data);
         if (data.success) {
             currentUser = data.user;
             showPage(data.user.role);
@@ -365,12 +366,21 @@ function handleLogin(e) {
             document.getElementById('login-form').reset();
             errorDiv.textContent = '';
         } else {
-            errorDiv.textContent = data.error || 'Invalid password';
+            const errMsg = data.error || 'Invalid password';
+            console.error('Login failed:', errMsg);
+            errorDiv.textContent = errMsg;
+            errorDiv.style.color = 'red';
+            errorDiv.style.fontWeight = 'bold';
+            alert('Login failed: ' + errMsg);
         }
     })
     .catch(err => {
         console.error('Login error:', err);
-        errorDiv.textContent = err.message || 'Login failed. Please try again.';
+        const errMsg = err.message || 'Login failed. Please try again.';
+        errorDiv.textContent = errMsg;
+        errorDiv.style.color = 'red';
+        errorDiv.style.fontWeight = 'bold';
+        alert('Login error: ' + errMsg);
     });
 }
 
