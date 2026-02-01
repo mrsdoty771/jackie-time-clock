@@ -148,9 +148,13 @@ function updateEmployeeNameDisplay() {
 
 // Event Listeners
 function setupEventListeners() {
-    // Login (button click + Enter key via form submit)
-    document.getElementById('login-btn')?.addEventListener('click', (e) => { e.preventDefault(); handleLogin(e); });
-    document.getElementById('login-form')?.addEventListener('submit', (e) => { e.preventDefault(); handleLogin(e); });
+    // Login - prevent form submit, handle via fetch
+    document.getElementById('login-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleLogin(e);
+        return false;
+    });
     document.getElementById('company-id')?.addEventListener('input', () => {
         loadCompanyNameForLogin();
         loadEmployeesForLogin();
