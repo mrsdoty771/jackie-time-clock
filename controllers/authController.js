@@ -33,12 +33,13 @@ async function login(req, res) {
     if (employee_id) {
       // Employee login via employee id
       const emp = await Employee.findOne({ _id: employee_id, companyId, active: true }).lean();
-      if (!emp) return res.status(401).json({ error: 'Invalid credentials' });
+      if (!emp) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
 
       employeeName = emp.name;
       employeeId = String(emp._id);
 
       user = await User.findOne({ companyId, employeeId: emp._id, role: 'employee' }).lean();
+      if (!user) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
     } else if (username) {
       // Manager or super-admin login via username
       user = await User.findOne({
@@ -46,12 +47,13 @@ async function login(req, res) {
         username,
         role: { $in: ['manager', 'super-admin'] },
       }).lean();
+      if (!user) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
     } else {
       return res.status(400).json({ error: 'Username or employee_id required' });
     }
 
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    if (!bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ error: 'Wrong password. Please try again.' });
     }
 
     req.session.user = {
