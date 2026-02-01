@@ -40,8 +40,12 @@ async function login(req, res) {
 
       user = await User.findOne({ companyId, employeeId: emp._id, role: 'employee' }).lean();
     } else if (username) {
-      // Manager login via username
-      user = await User.findOne({ companyId, username, role: 'manager' }).lean();
+      // Manager or super-admin login via username
+      user = await User.findOne({
+        companyId,
+        username,
+        role: { $in: ['manager', 'super-admin'] },
+      }).lean();
     } else {
       return res.status(400).json({ error: 'Username or employee_id required' });
     }
@@ -78,5 +82,16 @@ function me(req, res) {
   return res.json({ user: req.session?.user || null });
 }
 
-module.exports = { login, logout, me };
+// GET /api/login-options — public; returns super-admin login option if env is set
+function getLoginOptions(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const companyId = String(process.env.SUPER_ADMIN_COMPANY_ID || '').trim();
+  const username = String(process.env.SUPER_ADMIN_USERNAME || '').trim();
+  if (!companyId || !username) {
+    return res.json({ superAdmin: null });
+  }
+  return res.json({ superAdmin: { companyId, username } });
+}
+
+module.exports = { login, logout, me, getLoginOptions };
 

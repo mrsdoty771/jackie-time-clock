@@ -5,6 +5,7 @@ const API_BASE = '/api';
 let currentUser = null;
 let employees = [];
 let currentWeekStart = null;
+let loginOptions = { superAdmin: null };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -96,7 +97,7 @@ function showLoginPage() {
 
 function showPage(role) {
     document.getElementById('login-page').classList.add('hidden');
-    if (role === 'manager') {
+    if (role === 'manager' || role === 'super-admin') {
         document.getElementById('manager-page').classList.remove('hidden');
         loadEmployees();
         loadEmployeesForPunch();
@@ -253,26 +254,52 @@ function loadEmployeesForLogin() {
     const select = document.getElementById('user-select');
     if (!select) return;
 
-    // Always clear and rebuild
+    const previousValue = select.value;
+
     select.innerHTML = '<option value="">-- Select Name --</option>' +
-        '<option value="admin">Admin (Manager)</option>';
+        '<option value="admin">Admin (Manager)</option>' +
+        '<option value="Josh">Josh</option>';
 
     const companyId = getLoginCompanyId();
-    if (!companyId) return;
 
-    fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`)
-        .then(res => res.json())
-        .then(data => {
-            const employeeOptions = (data || []).map(emp =>
-                `<option value="emp_${emp.id}">${emp.name}</option>`
-            ).join('');
-            select.innerHTML = '<option value="">-- Select Name --</option>' +
-                '<option value="admin">Admin (Manager)</option>' +
-                employeeOptions;
-        })
-        .catch(err => {
-            console.error('Error loading employees:', err);
-        });
+    Promise.all([
+        fetch(`${API_BASE}/login-options`, { credentials: 'include' }).then(r => r.json()),
+        companyId ? fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`).then(r => r.json()) : Promise.resolve([])
+    ]).then(([opts, empData]) => {
+        loginOptions = opts || { superAdmin: null };
+        const superAdminOpt = loginOptions.superAdmin
+            ? '<option value="superadmin">Super Admin</option>'
+            : '';
+        const employeeOptions = (empData || []).map(emp =>
+            `<option value="emp_${emp.id}">${emp.name}</option>`
+        ).join('');
+        select.innerHTML = '<option value="">-- Select Name --</option>' +
+            '<option value="admin">Admin (Manager)</option>' +
+            '<option value="Josh">Josh</option>' +
+            superAdminOpt +
+            employeeOptions;
+        if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
+            select.value = previousValue;
+        }
+    }).catch(err => {
+        console.error('Error loading login options or employees:', err);
+        if (companyId) {
+            fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`)
+                .then(res => res.json())
+                .then(data => {
+                    const employeeOptions = (data || []).map(emp =>
+                        `<option value="emp_${emp.id}">${emp.name}</option>`
+                    ).join('');
+                    select.innerHTML = '<option value="">-- Select Name --</option>' +
+                        '<option value="admin">Admin (Manager)</option>' +
+                        '<option value="Josh">Josh</option>' + employeeOptions;
+                    if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
+                        select.value = previousValue;
+                    }
+                })
+                .catch(e => console.error('Error loading employees:', e));
+        }
+    });
 }
 
 function handleLogin(e) {
@@ -287,21 +314,30 @@ function handleLogin(e) {
         return;
     }
 
-    if (!companyId) {
+    const isSuperAdmin = selectedValue === 'superadmin' && loginOptions.superAdmin;
+    if (!isSuperAdmin && !companyId) {
         errorDiv.textContent = 'Please enter your Company ID';
         return;
     }
-    
+
     let loginData;
-    
-    // Check if admin or employee
-    if (selectedValue === 'admin') {
-        // Manager login with username
+
+    if (isSuperAdmin) {
+        loginData = {
+            username: loginOptions.superAdmin.username,
+            password,
+            companyId: loginOptions.superAdmin.companyId
+        };
+    } else if (selectedValue === 'admin') {
         loginData = { username: 'admin', password, companyId };
-    } else {
-        // Employee login with employee_id
+    } else if (selectedValue === 'Josh') {
+        loginData = { username: 'Josh', password, companyId };
+    } else if (selectedValue.startsWith('emp_')) {
         const employeeId = selectedValue.replace('emp_', '');
         loginData = { employee_id: employeeId, password, companyId };
+    } else {
+        errorDiv.textContent = 'Please select a name';
+        return;
     }
     
     fetch(`${API_BASE}/login`, {
@@ -562,7 +598,7 @@ function displayEmployeeRecords(records) {
 
 // Manager Functions
 function loadInitialData() {
-    if (currentUser?.role === 'manager') {
+    if (currentUser?.role === 'manager' || currentUser?.role === 'super-admin') {
         loadEmployees();
         loadEmployeesForPunch();
         loadEmployeesForReport();
@@ -1234,7 +1270,7 @@ function switchTab(tabName) {
     document.getElementById(`${tabName}-tab`).classList.add('active');
     
     // Load company settings when switching to that tab
-    if (tabName === 'company-settings' && currentUser?.role === 'manager') {
+    if (tabName === 'company-settings' && (currentUser?.role === 'manager' || currentUser?.role === 'super-admin')) {
         loadCompanySettings();
     }
 }
@@ -1308,7 +1344,7 @@ function updateLoginPageTitle(companyName) {
 }
 
 function loadEmployeeNotes() {
-    if (currentUser?.role !== 'manager') return;
+    if (currentUser?.role !== 'manager' && currentUser?.role !== 'super-admin') return;
     
     fetch(`${API_BASE}/notes`, {
         credentials: 'include',

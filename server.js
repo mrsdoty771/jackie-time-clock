@@ -77,20 +77,34 @@ app.listen(PORT, '0.0.0.0', () => {
   mongoose.connect(url, { serverSelectionTimeoutMS: 10000 })
     .then(async () => {
       console.log('Connected to MongoDB');
-      // Ensure default manager user exists if env vars are set
+      // Ensure default manager users exist if env vars are set
       const companyId = String(process.env.DEFAULT_COMPANY_ID || '').trim();
-      const username = String(process.env.DEFAULT_ADMIN_USERNAME || '').trim();
-      const password = String(process.env.DEFAULT_ADMIN_PASSWORD || '').trim();
-      if (companyId && username && password) {
-        const existing = await User.findOne({ companyId, username, role: 'manager' }).lean();
-        if (!existing) {
+      const adminUsername = String(process.env.DEFAULT_ADMIN_USERNAME || '').trim();
+      const adminPassword = String(process.env.DEFAULT_ADMIN_PASSWORD || '').trim();
+      if (companyId && adminUsername && adminPassword) {
+        const existingAdmin = await User.findOne({ companyId, username: adminUsername, role: 'manager' }).lean();
+        if (!existingAdmin) {
           await User.create({
             companyId,
-            username,
-            password: bcrypt.hashSync(password, 10),
+            username: adminUsername,
+            password: bcrypt.hashSync(adminPassword, 10),
             role: 'manager',
           });
-          console.log(`Default manager user "${username}" created for company ${companyId}.`);
+          console.log(`Default manager user "${adminUsername}" created for company ${companyId}.`);
+        }
+      }
+      const joshUsername = String(process.env.DEFAULT_MANAGER_2_USERNAME || '').trim();
+      const joshPassword = String(process.env.DEFAULT_MANAGER_2_PASSWORD || '').trim();
+      if (companyId && joshUsername && joshPassword) {
+        const existingJosh = await User.findOne({ companyId, username: joshUsername, role: 'manager' }).lean();
+        if (!existingJosh) {
+          await User.create({
+            companyId,
+            username: joshUsername,
+            password: bcrypt.hashSync(joshPassword, 10),
+            role: 'manager',
+          });
+          console.log(`Default manager user "${joshUsername}" created for company ${companyId}.`);
         }
       }
     })

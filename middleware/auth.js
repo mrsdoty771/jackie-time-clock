@@ -38,7 +38,8 @@ async function requireCompany(req, res, next) {
 }
 
 function requireManager(req, res, next) {
-  if (req.session?.user?.role !== 'manager') {
+  const role = req.session?.user?.role;
+  if (role !== 'manager' && role !== 'super-admin') {
     return res.status(403).json({ error: 'Manager access required' });
   }
   return next();
