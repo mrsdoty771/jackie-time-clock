@@ -148,8 +148,9 @@ function updateEmployeeNameDisplay() {
 
 // Event Listeners
 function setupEventListeners() {
-    // Login
-    document.getElementById('login-form').addEventListener('submit', handleLogin);
+    // Login (button click + Enter key via form submit)
+    document.getElementById('login-btn')?.addEventListener('click', (e) => { e.preventDefault(); handleLogin(e); });
+    document.getElementById('login-form')?.addEventListener('submit', (e) => { e.preventDefault(); handleLogin(e); });
     document.getElementById('company-id')?.addEventListener('input', () => {
         loadCompanyNameForLogin();
         loadEmployeesForLogin();
