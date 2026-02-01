@@ -1,24 +1,31 @@
+// 1. Load environment variables first
+require('dotenv').config();
+
+// 2. Import core libraries
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
-const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const path = require('path');
 const cors = require('cors');
-require('dotenv').config();
 
+// 3. Initialize the app
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// 4. Import Routes & Models
 const authRoutes = require('./routes/authRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const punchRoutes = require('./routes/punchRoutes');
 const companySettingsRoutes = require('./routes/companySettingsRoutes');
 const reportsRoutes = require('./routes/reportsRoutes');
+// (Note: You imported User/CompanySettings but didn't use them in this file. 
+//  I kept them here in case you need them later, otherwise they can be removed.)
+const bcrypt = require('bcryptjs');
 const User = require('./models/User');
 const CompanySettings = require('./models/CompanySettings');
 
-// Middleware
+// 5. Middleware Setup
 app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json());
@@ -41,13 +48,14 @@ app.use(
   })
 );
 
-// Routes
+// 6. Connect Routes
 app.use('/api', authRoutes);
 app.use('/api', employeeRoutes);
 app.use('/api', punchRoutes);
 app.use('/api', companySettingsRoutes);
 app.use('/api', reportsRoutes);
 
+// 7. Serve Static Files (Frontend)
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res, next) => {
@@ -55,7 +63,7 @@ app.get('*', (req, res, next) => {
   return res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start Server FIRST, then connect DB (Prevents Health Check timeouts)
+// 8. Start Server & Database
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Time Clock server running on port ${PORT}`);
   
@@ -67,12 +75,23 @@ app.listen(PORT, '0.0.0.0', () => {
   }
 
   mongoose.connect(url, { serverSelectionTimeoutMS: 10000 })
-    .then(() => {
+    .then(async () => {
       console.log('Connected to MongoDB');
-      // Optional Seed logic
+      // Ensure default manager user exists if env vars are set
       const companyId = String(process.env.DEFAULT_COMPANY_ID || '').trim();
-      if (companyId) {
-         console.log('Running optional seed check...');
+      const username = String(process.env.DEFAULT_ADMIN_USERNAME || '').trim();
+      const password = String(process.env.DEFAULT_ADMIN_PASSWORD || '').trim();
+      if (companyId && username && password) {
+        const existing = await User.findOne({ companyId, username, role: 'manager' }).lean();
+        if (!existing) {
+          await User.create({
+            companyId,
+            username,
+            password: bcrypt.hashSync(password, 10),
+            role: 'manager',
+          });
+          console.log(`Default manager user "${username}" created for company ${companyId}.`);
+        }
       }
     })
     .catch(err => console.error('MongoDB connection error:', err));
