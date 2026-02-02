@@ -656,8 +656,8 @@ function displayEmployees(employeesList) {
                 <p>Employee #: ${emp.employee_number}${emp.email ? ` | Email: ${emp.email}` : ''}${emp.phone ? ` | Phone: ${emp.phone}` : ''}</p>
             </div>
             <div style="display: flex; gap: 10px;">
-                <button class="btn btn-primary" onclick="editEmployee(${emp.id})">Edit</button>
-                <button class="btn btn-danger" onclick="removeEmployee(${emp.id})">Remove</button>
+                <button class="btn btn-primary" onclick="editEmployee('${String(emp.id)}')">Edit</button>
+                <button class="btn btn-danger" onclick="removeEmployee('${String(emp.id)}')">Remove</button>
             </div>
         </div>
     `;
@@ -801,8 +801,9 @@ function formatPhoneNumber(phone) {
 }
 
 function editEmployee(id) {
+    const idStr = String(id);
     // Find the employee data - might need to fetch if not in current filtered list
-    let employee = employees.find(emp => emp.id === id);
+    let employee = employees.find(emp => String(emp.id) === idStr);
     
     if (!employee) {
         // Employee not in current list, fetch it directly
@@ -811,7 +812,7 @@ function editEmployee(id) {
         })
             .then(res => res.json())
             .then(data => {
-                employee = data.find(emp => emp.id === id);
+                employee = data.find(emp => String(emp.id) === idStr);
                 if (employee) {
                     populateEditForm(employee);
                 } else {
