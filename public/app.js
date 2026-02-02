@@ -98,10 +98,31 @@ function showLoginPage() {
     document.getElementById('manager-page').classList.add('hidden');
 }
 
+function loadManagerNavCompanyName() {
+    const el = document.getElementById('manager-nav-company');
+    if (!el) return;
+    fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.logo_data) {
+                el.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = data.logo_data;
+                img.alt = data.company_name || 'Company';
+                img.className = 'navbar-logo';
+                el.appendChild(img);
+            } else {
+                el.textContent = data.company_name || 'Company';
+            }
+        })
+        .catch(() => { el.textContent = 'Company'; });
+}
+
 function showPage(role) {
     document.getElementById('login-page').classList.add('hidden');
     if (role === 'manager' || role === 'super-admin') {
         document.getElementById('manager-page').classList.remove('hidden');
+        loadManagerNavCompanyName();
         loadEmployees();
         loadEmployeesForPunch();
         loadEmployeesForReport();
@@ -254,6 +275,33 @@ function setupEventListeners() {
     
     // Company Settings
     document.getElementById('company-settings-form')?.addEventListener('submit', handleCompanySettings);
+    document.getElementById('company-logo-choose')?.addEventListener('click', () => document.getElementById('company-logo-input')?.click());
+    document.getElementById('company-logo-input')?.addEventListener('change', function () {
+        const file = this.files?.[0];
+        const preview = document.getElementById('company-logo-preview');
+        const wrap = document.getElementById('company-logo-preview-wrap');
+        const dataEl = document.getElementById('company-logo-data');
+        if (!file || !file.type.startsWith('image/')) {
+            if (wrap) wrap.classList.add('hidden');
+            if (dataEl) dataEl.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            if (preview) preview.src = dataUrl;
+            if (wrap) wrap.classList.remove('hidden');
+            if (dataEl) dataEl.value = dataUrl;
+        };
+        reader.readAsDataURL(file);
+        this.value = '';
+    });
+    document.getElementById('company-logo-remove')?.addEventListener('click', () => {
+        document.getElementById('company-logo-preview').src = '';
+        document.getElementById('company-logo-preview-wrap')?.classList.add('hidden');
+        document.getElementById('company-logo-data').value = '';
+        document.getElementById('company-logo-input').value = '';
+    });
 
     // Manager profile (My Account)
     document.getElementById('manager-profile-form')?.addEventListener('submit', handleManagerProfileSubmit);
@@ -1493,8 +1541,18 @@ function loadCompanySettings() {
         .then(res => res.json())
         .then(data => {
             const companyNameInput = document.getElementById('company-name');
-            if (companyNameInput) {
-                companyNameInput.value = data.company_name || 'MVC';
+            if (companyNameInput) companyNameInput.value = data.company_name || 'MVC';
+            const logoData = data.logo_data || '';
+            const preview = document.getElementById('company-logo-preview');
+            const wrap = document.getElementById('company-logo-preview-wrap');
+            const dataEl = document.getElementById('company-logo-data');
+            if (dataEl) dataEl.value = logoData;
+            if (logoData) {
+                if (preview) preview.src = logoData;
+                if (wrap) wrap.classList.remove('hidden');
+            } else {
+                if (preview) preview.src = '';
+                if (wrap) wrap.classList.add('hidden');
             }
         })
         .catch(err => {
@@ -1665,40 +1723,31 @@ function handleManagerProfileSubmit(e) {
 function handleCompanySettings(e) {
     e.preventDefault();
     const companyName = document.getElementById('company-name').value.trim();
+    const logoData = document.getElementById('company-logo-data')?.value?.trim() || '';
     const messageDiv = document.getElementById('company-settings-message');
-    
     if (!companyName) {
-        if (messageDiv) {
-            messageDiv.innerHTML = '<p style="color: red;">Company name is required</p>';
-        }
+        if (messageDiv) messageDiv.innerHTML = '<p style="color: red;">Company name is required</p>';
         return;
     }
-    
     fetch(`${API_BASE}/company-settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName }),
+        body: JSON.stringify({ company_name: companyName, logo_data: logoData || null }),
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                if (messageDiv) {
-                    messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page will update on next refresh.</p>';
-                }
-                // Update login page title if visible
+                if (messageDiv) messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page and dashboard will update.</p>';
                 updateLoginPageTitle(data.company_name);
+                loadManagerNavCompanyName();
             } else {
-                if (messageDiv) {
-                    messageDiv.innerHTML = `<p style="color: red;">${data.error || 'Failed to save settings'}</p>`;
-                }
+                if (messageDiv) messageDiv.innerHTML = `<p style="color: red;">${data.error || 'Failed to save settings'}</p>`;
             }
         })
         .catch(err => {
             console.error('Error saving company settings:', err);
-            if (messageDiv) {
-                messageDiv.innerHTML = '<p style="color: red;">Error saving settings. Please try again.</p>';
-            }
+            if (messageDiv) messageDiv.innerHTML = '<p style="color: red;">Error saving settings. Please try again.</p>';
         });
 }
 

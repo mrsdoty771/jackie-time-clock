@@ -75,9 +75,12 @@
     </div>
 
     <div id="manager-page" class="page hidden">
-        <nav class="navbar">
-            <h2>Manager Dashboard</h2>
-            <button id="manager-logout-btn" class="btn btn-logout">Logout</button>
+        <nav class="navbar navbar-manager">
+            <span id="manager-nav-company" class="navbar-left"></span>
+            <h2 class="navbar-center">Manager Dashboard</h2>
+            <div class="navbar-right">
+                <button id="manager-logout-btn" class="btn btn-logout">Logout</button>
+            </div>
         </nav>
         
         <div class="container">
@@ -272,7 +275,7 @@
             <!-- Company Settings Tab -->
             <div id="company-settings-tab" class="tab-content">
                 <h3>Company Settings</h3>
-                <p style="color: #666; margin-bottom: 20px;">Customize your time clock application branding. The company name will appear on the login screen.</p>
+                <p style="color: #666; margin-bottom: 20px;">Customize your time clock application branding. The company name will appear on the login screen. Upload a logo to show it at the top of the manager dashboard instead of the name.</p>
                 <form id="company-settings-form" class="form">
                     <div class="form-group">
                         <label for="company-name">Company Name</label>
@@ -280,6 +283,19 @@
                         <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
                             This will replace "MVC" on the login screen (e.g., "[Company Name] Time Clock")
                         </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Dashboard Logo</label>
+                        <p style="color: #666; font-size: 12px; margin-bottom: 8px;">Shown at the top of the manager dashboard. Leave empty to show company name.</p>
+                        <div class="logo-upload-area">
+                            <input type="file" id="company-logo-input" accept="image/*" style="display: none;">
+                            <div id="company-logo-preview-wrap" class="logo-preview-wrap hidden">
+                                <img id="company-logo-preview" src="" alt="Logo preview" class="logo-preview-img">
+                                <button type="button" id="company-logo-remove" class="btn btn-secondary btn-small">Remove logo</button>
+                            </div>
+                            <button type="button" id="company-logo-choose" class="btn btn-secondary">Choose logo image</button>
+                        </div>
+                        <input type="hidden" id="company-logo-data" name="logo_data">
                     </div>
                     <button type="submit" class="btn btn-primary">Save Settings</button>
                 </form>
@@ -361,8 +377,10 @@
                     <small style="color: #666; font-size: 12px;">Inactive employees cannot log in and are hidden from the time clock</small>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" id="cancel-edit-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+                <div class="form-actions" style="margin-top: 12px;">
+                    <button type="button" class="btn btn-cancel-edit" id="cancel-edit-btn">Cancel</button>
                 </div>
             </form>
         </div>
