@@ -1094,19 +1094,34 @@ function generateReport() {
     fetch(url, {
         credentials: 'include'
     })
-        .then(res => res.json())
-        .then(data => {
+        .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || `Report failed (${res.status})`);
+            }
+            return data;
+        })
+        .then((data) => {
+            if (!Array.isArray(data)) {
+                showMessage('Invalid report data received', 'error');
+                return;
+            }
             displayReport(data);
         })
-        .catch(err => {
-            showMessage('Error generating report', 'error');
+        .catch((err) => {
+            showMessage(err.message || 'Error generating report', 'error');
         });
 }
 
 function displayReport(reportData) {
     const container = document.getElementById('report-results');
     const printBtn = document.getElementById('print-report-btn');
-    
+    if (!container) return;
+    if (!Array.isArray(reportData)) {
+        container.innerHTML = '<p>No report data.</p>';
+        if (printBtn) printBtn.style.display = 'none';
+        return;
+    }
     if (reportData.length === 0) {
         container.innerHTML = '<p>No records found for the selected date range.</p>';
         if (printBtn) printBtn.style.display = 'none';
