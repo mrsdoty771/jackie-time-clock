@@ -7,20 +7,22 @@ let employees = [];
 let currentWeekStart = null;
 let loginOptions = { superAdmin: null };
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    // Load company name for login page
+// Initialize (run when DOM is ready; if app.js loads late, DOMContentLoaded may have already fired)
+function init() {
     loadCompanyNameForLogin();
-    
-    // Don't check auth immediately - let user see login page first
-    // checkAuth will run after a short delay to avoid conflicts
     setTimeout(() => {
         checkAuth();
     }, 100);
     setupEventListeners();
     initializeWeekStart();
     loadEmployeesForLogin();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
 
 function loadCompanyNameForLogin() {
     const companyId = getLoginCompanyId();
