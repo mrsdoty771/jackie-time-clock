@@ -11,6 +11,7 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true, default: null },
     ext: { type: String, trim: true, default: null },
     password: { type: String, required: true }, // bcrypt hash
+    passwordDisplayEncrypted: { type: String, default: null }, // encrypted plaintext for manager edit form only
 
     role: { type: String, enum: ['manager', 'employee', 'super-admin'], default: 'employee' },
 

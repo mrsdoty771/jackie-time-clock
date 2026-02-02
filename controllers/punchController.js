@@ -97,6 +97,62 @@ async function listPunches(req, res) {
   }
 }
 
+// GET /api/punches/:id  (manager only) — single punch for editing
+async function getPunch(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
+  const companyId = req.companyId;
+  const { id } = req.params;
+
+  try {
+    const punch = await Punch.findOne({ _id: id, companyId }).lean();
+    if (!punch) return res.status(404).json({ error: 'Punch not found' });
+    return res.json({
+      id: String(punch._id),
+      employee_id: String(punch.employeeId),
+      employee_name: punch.employeeName || null,
+      punch_type: punch.punchType,
+      punch_time: punch.punchTime,
+      notes: punch.notes || null,
+    });
+  } catch (err) {
+    console.error('getPunch error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
+// PUT /api/punches/:id  (manager only) — update punch type, time, notes
+async function updatePunch(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
+  const companyId = req.companyId;
+  const { id } = req.params;
+  const { punch_type, punch_time, notes } = req.body || {};
+
+  try {
+    const punch = await Punch.findOne({ _id: id, companyId });
+    if (!punch) return res.status(404).json({ error: 'Punch not found' });
+
+    const validTypes = ['clock_in', 'clock_out', 'lunch_in', 'lunch_out'];
+    if (punch_type !== undefined) {
+      if (!validTypes.includes(punch_type)) return res.status(400).json({ error: 'Invalid punch type' });
+      punch.punchType = punch_type;
+    }
+    if (punch_time !== undefined) {
+      const t = new Date(punch_time);
+      if (Number.isNaN(t.getTime())) return res.status(400).json({ error: 'Invalid punch time' });
+      punch.punchTime = t;
+    }
+    if (notes !== undefined) punch.notes = notes ? String(notes).trim() : null;
+
+    await punch.save();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('updatePunch error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
 // DELETE /api/punches/:id  (manager only)
 async function deletePunch(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -114,5 +170,5 @@ async function deletePunch(req, res) {
   }
 }
 
-module.exports = { createPunch, listPunches, deletePunch };
+module.exports = { createPunch, listPunches, getPunch, updatePunch, deletePunch };
 

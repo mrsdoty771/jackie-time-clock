@@ -343,9 +343,14 @@
                     <input type="tel" id="edit-emp-phone">
                 </div>
                 <div class="form-group">
-                    <label for="edit-emp-password">New Password (leave blank to keep current)</label>
-                    <input type="password" id="edit-emp-password" placeholder="Enter new password">
-                    <small style="color: #666; font-size: 12px;">Leave blank if you don't want to change the password</small>
+                    <label for="edit-emp-password">New Password</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="edit-emp-password" placeholder="Enter new password">
+                        <button type="button" id="edit-emp-password-toggle" class="password-toggle-btn" aria-label="Show password" title="Show password">
+                            <svg class="pwd-icon pwd-icon-show" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="pwd-icon pwd-icon-hide" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="edit-emp-status">Status *</label>
@@ -357,6 +362,42 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-edit-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Punch Modal -->
+    <div id="edit-punch-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-edit-punch">&times;</span>
+            <h3>Edit Punch</h3>
+            <form id="edit-punch-form">
+                <input type="hidden" id="edit-punch-id">
+                <div class="form-group">
+                    <label for="edit-punch-type">Punch Type</label>
+                    <select id="edit-punch-type" required>
+                        <option value="clock_in">Clock In</option>
+                        <option value="clock_out">Clock Out</option>
+                        <option value="lunch_in">Lunch In</option>
+                        <option value="lunch_out">Lunch Out</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-punch-date">Date</label>
+                    <input type="date" id="edit-punch-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-punch-time">Time</label>
+                    <input type="time" id="edit-punch-time" required step="1">
+                </div>
+                <div class="form-group">
+                    <label for="edit-punch-notes">Notes</label>
+                    <textarea id="edit-punch-notes" rows="2" placeholder="Optional notes"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-edit-punch-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>

@@ -115,13 +115,16 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 2;
+    pointer-events: auto;
 }
 .password-toggle-btn:hover {
     color: #667eea;
     background: rgba(102, 126, 234, 0.1);
 }
+/* Allow clicks on the icon to hit the button (no pointer-events: none so toggle works) */
 .password-toggle-btn .pwd-icon {
-    pointer-events: none;
+    pointer-events: auto;
 }
 
 /* --- Buttons --- */
@@ -142,8 +145,8 @@ body {
 .btn-warning { background: #ffc107; color: #333; width: 100%; }
 .btn-info { background: #17a2b8; color: white; width: 100%; }
 .btn-secondary { background: #6c757d; color: white; }
-.btn-logout { background: #ff6347; color: white; }
-.btn-logout:hover { background: #ff7a62; }
+.btn-logout { background: #667eea; color: white; }
+.btn-logout:hover { background: #7c8ef0; }
 
 .btn:hover {
     opacity: 0.9;
@@ -189,22 +192,24 @@ body {
 
 .tab-btn {
     padding: 12px 20px;
-    background: #ff6347;
+    background: #ffe750;
     border: none;
-    color: white;
+    color: #333;
     border-radius: 5px;
     cursor: pointer;
     white-space: nowrap;
 }
 
 .tab-btn:hover {
-    background: #ff7a62;
+    background: #ffec6b;
+    color: #222;
 }
 
 .tab-btn.active {
-    background: white;
-    color: #ff6347;
+    background: #ffe750;
+    color: #333;
     font-weight: bold;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 /* --- Modals & Popups (Centered) --- */

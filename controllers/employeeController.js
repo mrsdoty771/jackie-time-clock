@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
+const { encrypt, decrypt } = require('../utils/encrypt');
 
 function normalizeStatus(status) {
   if (!status) return 'active';
@@ -88,6 +89,36 @@ async function listEmployees(req, res) {
   }
 }
 
+// GET /api/employees/:id (manager only) — single employee for edit, includes decrypted password for display
+async function getEmployee(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const companyId = req.companyId;
+  const { id } = req.params;
+  try {
+    const employee = await Employee.findOne({ _id: id, companyId }).lean();
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    const user = await User.findOne({ companyId, employeeId: employee._id, role: 'employee' }).select('passwordDisplayEncrypted').lean();
+    let password = '';
+    if (user && user.passwordDisplayEncrypted) {
+      try {
+        password = decrypt(user.passwordDisplayEncrypted) || '';
+      } catch (_) {}
+    }
+    return res.json({
+      id: String(employee._id),
+      name: employee.name || '',
+      employee_number: employee.employeeNumber || '',
+      email: employee.email || '',
+      phone: employee.phone || '',
+      active: employee.active ? 1 : 0,
+      password,
+    });
+  } catch (err) {
+    console.error('getEmployee error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
 // POST /api/employees  (manager only)
 async function createEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -113,10 +144,12 @@ async function createEmployee(req, res) {
     const passwordToUse = (initialPassword && String(initialPassword).trim()) || null;
     const tempPassword = passwordToUse || crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
     const defaultPasswordHash = bcrypt.hashSync(tempPassword, 10);
+    const passwordDisplayEncrypted = encrypt(tempPassword);
     await User.create({
       companyId,
       username: String(employee_number).trim(),
       password: defaultPasswordHash,
+      passwordDisplayEncrypted: passwordDisplayEncrypted || undefined,
       role: 'employee',
       employeeId: employee._id,
     });
@@ -140,10 +173,17 @@ async function updateEmployee(req, res) {
 
   const companyId = req.companyId;
   const { id } = req.params;
-  const { name, employee_number, email, phone, active } = req.body;
+  const { name, employee_number, email, phone, active, password: newPassword } = req.body;
 
   if (!name || !employee_number) {
     return res.status(400).json({ error: 'Name and employee number are required' });
+  }
+
+  if (newPassword !== undefined && newPassword !== null && String(newPassword).trim().length > 0) {
+    const pwd = String(newPassword).trim();
+    if (pwd.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
   }
 
   try {
@@ -162,12 +202,25 @@ async function updateEmployee(req, res) {
 
     await employee.save();
 
-    // Update employee user username if employee number changed
+    // Update employee user: username if employee number changed, and optional password
+    const userUpdates = {};
     if (String(oldEmployeeNumber) !== String(employee.employeeNumber)) {
-      await User.updateOne(
+      userUpdates.username = employee.employeeNumber;
+    }
+    if (newPassword !== undefined && newPassword !== null && String(newPassword).trim().length > 0) {
+      const pwdPlain = String(newPassword).trim();
+      userUpdates.password = bcrypt.hashSync(pwdPlain, 10);
+      const enc = encrypt(pwdPlain);
+      if (enc) userUpdates.passwordDisplayEncrypted = enc;
+    }
+    if (Object.keys(userUpdates).length > 0) {
+      const result = await User.updateOne(
         { companyId, employeeId: employee._id, role: 'employee' },
-        { $set: { username: employee.employeeNumber } }
+        { $set: userUpdates }
       );
+      if (result.matchedCount === 0 && Object.keys(userUpdates).length > 0) {
+        return res.status(404).json({ error: 'Employee user account not found' });
+      }
     }
 
     return res.json({ success: true });
@@ -236,6 +289,7 @@ async function deactivateEmployee(req, res) {
 module.exports = {
   listPublicEmployees,
   listEmployees,
+  getEmployee,
   createEmployee,
   updateEmployee,
   setEmployeePassword,

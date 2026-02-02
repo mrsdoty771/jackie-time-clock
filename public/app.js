@@ -248,6 +248,9 @@ function setupEventListeners() {
     // Edit Punches
     document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
     document.getElementById('refresh-punches-btn')?.addEventListener('click', loadPunchesForEdit);
+    document.getElementById('edit-punch-form')?.addEventListener('submit', handleEditPunchSubmit);
+    document.getElementById('cancel-edit-punch-btn')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
+    document.querySelector('.close-edit-punch')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
     
     // Company Settings
     document.getElementById('company-settings-form')?.addEventListener('submit', handleCompanySettings);
@@ -256,7 +259,9 @@ function setupEventListeners() {
     document.getElementById('manager-profile-form')?.addEventListener('submit', handleManagerProfileSubmit);
     document.getElementById('send-test-email-btn')?.addEventListener('click', handleSendTestEmail);
 
-    document.getElementById('profile-smtp-password-toggle')?.addEventListener('click', () => {
+    // My Account: eye toggles password visibility (same pattern for both)
+    document.getElementById('profile-smtp-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
         const input = document.getElementById('profile-smtp-password');
         const btn = document.getElementById('profile-smtp-password-toggle');
         const showIcon = btn?.querySelector('.pwd-icon-show');
@@ -269,6 +274,25 @@ function setupEventListeners() {
         if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
         if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
     });
+
+    // Edit Employee: same eye toggle as My Account (direct listener on the button)
+    document.getElementById('edit-emp-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const input = document.getElementById('edit-emp-password');
+        const btn = document.getElementById('edit-emp-password-toggle');
+        const showIcon = btn?.querySelector('.pwd-icon-show');
+        const hideIcon = btn?.querySelector('.pwd-icon-hide');
+        if (!input || !btn) return;
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+        btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+        if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
+        if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
+    });
+
+    setupEditPasswordPlaceholder();
     
     // Employee Status Filter
     document.getElementById('employee-status-filter')?.addEventListener('change', (e) => {
@@ -805,8 +829,8 @@ function displayPunchesForEdit(punches) {
                     </p>
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-primary" onclick="editPunch(${punch.id})">Edit</button>
-                    <button class="btn btn-danger" onclick="deletePunch(${punch.id})">Delete</button>
+                    <button class="btn btn-primary" onclick="editPunch('${String(punch.id)}')">Edit</button>
+                    <button class="btn btn-danger" onclick="deletePunch('${String(punch.id)}')">Delete</button>
                 </div>
             </div>
         `;
@@ -814,7 +838,53 @@ function displayPunchesForEdit(punches) {
 }
 
 function editPunch(id) {
-    showMessage('Edit punch functionality coming soon!', 'error');
+    if (!id) return;
+    fetch(`${API_BASE}/punches/${id}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                showMessage(data.error || 'Punch not found', 'error');
+                return;
+            }
+            const d = data.punch_time ? new Date(data.punch_time) : new Date();
+            const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            const timeStr = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+            document.getElementById('edit-punch-id').value = data.id || id;
+            document.getElementById('edit-punch-type').value = data.punch_type || 'clock_in';
+            document.getElementById('edit-punch-date').value = dateStr;
+            document.getElementById('edit-punch-time').value = timeStr;
+            document.getElementById('edit-punch-notes').value = data.notes || '';
+            document.getElementById('edit-punch-modal').classList.remove('hidden');
+        })
+        .catch(() => showMessage('Error loading punch', 'error'));
+}
+
+function handleEditPunchSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('edit-punch-id').value;
+    if (!id) return;
+    const punchType = document.getElementById('edit-punch-type').value;
+    const date = document.getElementById('edit-punch-date').value;
+    const time = document.getElementById('edit-punch-time').value;
+    const notes = document.getElementById('edit-punch-notes').value.trim();
+    const punchTime = date && time ? `${date}T${time}` : new Date().toISOString();
+    fetch(`${API_BASE}/punches/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ punch_type: punchType, punch_time: punchTime, notes: notes || null })
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('edit-punch-modal').classList.add('hidden');
+                showMessage('Punch updated', 'success');
+                loadPunchesForEdit();
+            } else {
+                showMessage(data.error || 'Failed to update punch', 'error');
+            }
+        })
+        .catch(() => showMessage('Error updating punch', 'error'));
 }
 
 function deletePunch(id) {
@@ -855,57 +925,78 @@ function formatPhoneNumber(phone) {
 
 function editEmployee(id) {
     const idStr = String(id);
-    // Find the employee data - might need to fetch if not in current filtered list
-    let employee = employees.find(emp => String(emp.id) === idStr);
-    
-    if (!employee) {
-        // Employee not in current list, fetch it directly
-        fetch(`${API_BASE}/employees?status=all`, {
-            credentials: 'include'
+    fetch(`${API_BASE}/employees/${idStr}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                showMessage(data.error || 'Employee not found', 'error');
+                return;
+            }
+            populateEditForm(data);
         })
-            .then(res => res.json())
-            .then(data => {
-                employee = data.find(emp => String(emp.id) === idStr);
-                if (employee) {
-                    populateEditForm(employee);
-                } else {
-                    showMessage('Employee not found', 'error');
-                }
-            })
-            .catch(err => {
-                showMessage('Error loading employee', 'error');
-            });
-        return;
-    }
-    
-    populateEditForm(employee);
+        .catch(() => showMessage('Error loading employee', 'error'));
 }
 
+const EDIT_PASSWORD_PLACEHOLDER = '••••••••';
+
 function populateEditForm(employee) {
-    // Populate the edit form
     document.getElementById('edit-emp-id').value = employee.id;
     document.getElementById('edit-emp-name').value = employee.name || '';
     document.getElementById('edit-emp-number').value = employee.employee_number || '';
     document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
-    document.getElementById('edit-emp-password').value = '';
+    const pwdInput = document.getElementById('edit-emp-password');
+    const hasRealPassword = employee.password != null && String(employee.password).trim() !== '';
+    if (hasRealPassword) {
+        pwdInput.value = employee.password;
+        pwdInput.removeAttribute('data-is-placeholder');
+    } else {
+        pwdInput.value = EDIT_PASSWORD_PLACEHOLDER;
+        pwdInput.setAttribute('data-is-placeholder', '1');
+    }
+    pwdInput.type = 'password';
+    const pwdBtn = document.getElementById('edit-emp-password-toggle');
+    if (pwdBtn) {
+        pwdBtn.setAttribute('aria-label', 'Show password');
+        pwdBtn.setAttribute('title', 'Show password');
+        const showIcon = pwdBtn.querySelector('.pwd-icon-show');
+        const hideIcon = pwdBtn.querySelector('.pwd-icon-hide');
+        if (showIcon) showIcon.style.display = '';
+        if (hideIcon) hideIcon.style.display = 'none';
+    }
     document.getElementById('edit-emp-status').value = (employee.active === 1 || employee.active === '1') ? '1' : '0';
-    
-    // Show the modal
     document.getElementById('edit-employee-modal').classList.remove('hidden');
+}
+
+function setupEditPasswordPlaceholder() {
+    const input = document.getElementById('edit-emp-password');
+    if (!input) return;
+    input.addEventListener('focus', function () {
+        if (this.getAttribute('data-is-placeholder') === '1') {
+            this.value = '';
+            this.removeAttribute('data-is-placeholder');
+        }
+    });
+    input.addEventListener('blur', function () {
+        if (this.value.trim() === '') {
+            this.value = EDIT_PASSWORD_PLACEHOLDER;
+            this.setAttribute('data-is-placeholder', '1');
+        }
+    });
 }
 
 function handleEditEmployee(e) {
     e.preventDefault();
     const id = document.getElementById('edit-emp-id').value;
+    let newPassword = document.getElementById('edit-emp-password').value.trim();
+    if (newPassword === EDIT_PASSWORD_PLACEHOLDER) newPassword = '';
     const employee = {
         name: document.getElementById('edit-emp-name').value,
         employee_number: document.getElementById('edit-emp-number').value,
         phone: document.getElementById('edit-emp-phone').value,
         active: parseInt(document.getElementById('edit-emp-status').value)
     };
-    const newPassword = document.getElementById('edit-emp-password').value.trim();
-    
-    // Update employee info
+    if (newPassword) employee.password = newPassword;
+
     fetch(`${API_BASE}/employees/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -921,82 +1012,18 @@ function handleEditEmployee(e) {
             const text = await res.text();
             throw new Error(text || 'Server error');
         }
-        
-        if (!res.ok) {
-            throw new Error(data.error || 'Failed to update employee');
-        }
-        
+        if (!res.ok) throw new Error(data.error || 'Failed to update employee');
         return data;
     })
     .then(data => {
-        if (data.error) {
-            throw new Error(data.error);
-        }
-        if (data.success) {
-            // If password was provided, update it
-            if (newPassword) {
-                return fetch(`${API_BASE}/employees/${id}/password`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: newPassword }),
-                    credentials: 'include'
-                })
-                .then(async res => {
-                    const contentType = res.headers.get('content-type');
-                    let pwdData;
-                    if (contentType && contentType.includes('application/json')) {
-                        pwdData = await res.json();
-                    } else {
-                        const text = await res.text();
-                        throw new Error(text || 'Server error');
-                    }
-                    
-                    if (!res.ok) {
-                        throw new Error(pwdData.error || 'Failed to change password');
-                    }
-                    
-                    return pwdData;
-                })
-                .then(pwdData => {
-                    if (pwdData.success) {
-                        showMessage('Employee updated successfully, password changed', 'success');
-                    } else {
-                        showMessage('Employee updated but password change failed: ' + (pwdData.error || 'Unknown error'), 'error');
-                    }
-                    // Close modal and refresh after password update attempt
-                    document.getElementById('edit-employee-modal').classList.add('hidden');
-                    document.getElementById('edit-employee-form').reset();
-                    // Reload with current filter
-                    const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
-                    loadEmployees(currentFilter);
-                    loadEmployeesForPunch();
-                    loadEmployeesForReport();
-                })
-                .catch(err => {
-                    showMessage('Employee updated but password change failed: ' + (err.message || err), 'error');
-                    // Close modal and refresh even if password update fails
-                    document.getElementById('edit-employee-modal').classList.add('hidden');
-                    document.getElementById('edit-employee-form').reset();
-                    // Reload with current filter
-                    const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
-                    loadEmployees(currentFilter);
-                    loadEmployeesForPunch();
-                    loadEmployeesForReport();
-                });
-            } else {
-                showMessage('Employee updated successfully', 'success');
-                // Close modal and refresh
-                document.getElementById('edit-employee-modal').classList.add('hidden');
-                document.getElementById('edit-employee-form').reset();
-                // Reload with current filter
-                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
-                loadEmployees(currentFilter);
-                loadEmployeesForPunch();
-                loadEmployeesForReport();
-            }
-        } else {
-            showMessage(data.error || 'Failed to update employee', 'error');
-        }
+        if (data.error) throw new Error(data.error);
+        showMessage(newPassword ? 'Employee and password updated successfully' : 'Employee updated successfully', 'success');
+        document.getElementById('edit-employee-modal').classList.add('hidden');
+        document.getElementById('edit-employee-form').reset();
+        const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+        loadEmployees(currentFilter);
+        loadEmployeesForPunch();
+        loadEmployeesForReport();
     })
     .catch(err => {
         console.error('Error updating employee:', err);

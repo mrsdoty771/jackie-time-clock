@@ -7,6 +7,7 @@ router.get('/employees/public', employeeController.listPublicEmployees);
 
 // Authenticated employee management
 router.get('/employees', requireAuth, requireCompany, employeeController.listEmployees);
+router.get('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.getEmployee);
 router.post('/employees', requireAuth, requireCompany, requireManager, employeeController.createEmployee);
 router.put('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.updateEmployee);
 router.put('/employees/:id/password', requireAuth, requireCompany, requireManager, employeeController.setEmployeePassword);
