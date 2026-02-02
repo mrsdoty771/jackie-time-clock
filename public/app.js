@@ -6,6 +6,7 @@ let currentUser = null;
 let employees = [];
 let currentWeekStart = null;
 let loginOptions = { superAdmin: null };
+let lastReportData = null;
 
 // Initialize (run when DOM is ready; if app.js loads late, DOMContentLoaded may have already fired)
 function init() {
@@ -242,6 +243,7 @@ function setupEventListeners() {
     // Reports
     document.getElementById('generate-report-btn')?.addEventListener('click', generateReport);
     document.getElementById('print-report-btn')?.addEventListener('click', printReport);
+    document.getElementById('email-report-btn')?.addEventListener('click', emailReport);
     
     // Edit Punches
     document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
@@ -258,6 +260,11 @@ function setupEventListeners() {
 
     // Employee Management dropdown: show selected employee details
     document.getElementById('employee-management-select')?.addEventListener('change', updateEmployeeManagementDetails);
+
+    // Email Report modal
+    document.getElementById('email-report-form')?.addEventListener('submit', handleEmailReportSubmit);
+    document.getElementById('cancel-email-report-btn')?.addEventListener('click', closeEmailReportModal);
+    document.querySelector('.close-email-report')?.addEventListener('click', closeEmailReportModal);
 }
 
 function loadEmployeesForLogin() {
@@ -1106,6 +1113,7 @@ function generateReport() {
                 showMessage('Invalid report data received', 'error');
                 return;
             }
+            lastReportData = data;
             displayReport(data);
         })
         .catch((err) => {
@@ -1120,16 +1128,20 @@ function displayReport(reportData) {
     if (!Array.isArray(reportData)) {
         container.innerHTML = '<p>No report data.</p>';
         if (printBtn) printBtn.style.display = 'none';
+        document.getElementById('email-report-btn').style.display = 'none';
         return;
     }
     if (reportData.length === 0) {
         container.innerHTML = '<p>No records found for the selected date range.</p>';
         if (printBtn) printBtn.style.display = 'none';
+        document.getElementById('email-report-btn').style.display = 'none';
         return;
     }
     
-    // Show print button if there's data
+    // Show print and email buttons if there's data
     if (printBtn) printBtn.style.display = 'inline-block';
+    const emailBtn = document.getElementById('email-report-btn');
+    if (emailBtn) emailBtn.style.display = 'inline-block';
     
     container.innerHTML = reportData.map(emp => {
         const daysHtml = Object.values(emp.days).map(day => {
@@ -1300,6 +1312,87 @@ function printReport() {
             printWindow.close();
         }, 250);
     };
+}
+
+function emailReport() {
+    const startDate = document.getElementById('report-start-date')?.value;
+    const endDate = document.getElementById('report-end-date')?.value;
+    if (!startDate || !endDate) {
+        showMessage('Please generate a report first (select dates and click Generate Report).', 'error');
+        return;
+    }
+    document.getElementById('email-report-to').value = '';
+    document.getElementById('email-report-message').textContent = '';
+    document.getElementById('email-report-modal').classList.remove('hidden');
+}
+
+function closeEmailReportModal() {
+    document.getElementById('email-report-modal').classList.add('hidden');
+    document.getElementById('email-report-form').reset();
+    document.getElementById('email-report-message').textContent = '';
+}
+
+function handleEmailReportSubmit(e) {
+    e.preventDefault();
+    const to = document.getElementById('email-report-to').value.trim();
+    const startDate = document.getElementById('report-start-date').value;
+    const endDate = document.getElementById('report-end-date').value;
+    const employeeIdEl = document.getElementById('report-employee');
+    const employeeId = employeeIdEl?.value?.trim() || '';
+
+    if (!to) {
+        document.getElementById('email-report-message').textContent = 'Please enter an email address.';
+        document.getElementById('email-report-message').style.color = 'red';
+        return;
+    }
+    if (!startDate || !endDate) {
+        document.getElementById('email-report-message').textContent = 'Please generate a report first.';
+        document.getElementById('email-report-message').style.color = 'red';
+        return;
+    }
+
+    const msgEl = document.getElementById('email-report-message');
+    msgEl.textContent = 'Sending...';
+    msgEl.style.color = '#666';
+
+    const body = { to, start_date: startDate, end_date: endDate };
+    if (employeeId) body.employee_id = employeeId;
+
+    fetch(`${API_BASE}/reports/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include'
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim().startsWith('{')) {
+                    data = JSON.parse(text);
+                } else {
+                    data = { error: 'Server returned an error. Check the server is running and email (SMTP) is configured in .env.' };
+                }
+            } catch (_) {
+                data = { error: 'Server returned an error. Check the server is running and email (SMTP) is configured in .env.' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                msgEl.textContent = 'Report sent successfully.';
+                msgEl.style.color = 'green';
+                showMessage('Report sent by email.', 'success');
+                setTimeout(() => closeEmailReportModal(), 1500);
+            } else {
+                msgEl.textContent = data.error || 'Failed to send email.';
+                msgEl.style.color = 'red';
+            }
+        })
+        .catch((err) => {
+            msgEl.textContent = err.message || 'Failed to send email.';
+            msgEl.style.color = 'red';
+        });
 }
 
 function formatDateForPrint(dateStr) {

@@ -1,5 +1,7 @@
 const Punch = require('../models/Punch');
 const Employee = require('../models/Employee');
+const PDFDocument = require('pdfkit');
+const nodemailer = require('nodemailer');
 
 function parseDateOnly(dateStr) {
   if (!dateStr) return null;
@@ -15,16 +17,167 @@ function dateKeyLocal(date) {
   return `${y}-${m}-${day}`;
 }
 
+function formatPunchType(type) {
+  return String(type || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function formatDateTime(date) {
+  return new Date(date).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+/** Shared: build report data array for weekly and email. */
+async function getReportData(companyId, user, startDate, endDate, employeeId) {
+  const filter = { companyId };
+  if (user.role === 'employee') {
+    filter.employeeId = user.employee_id;
+  } else if (employeeId) {
+    filter.employeeId = employeeId;
+  }
+  const endInclusive = new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+  filter.punchTime = { $gte: startDate, $lte: endInclusive };
+
+  const punches = await Punch.find(filter).sort({ employeeId: 1, punchTime: 1 }).lean();
+  const employeeIds = Array.from(new Set(punches.map((p) => String(p.employeeId))));
+  const employees = await Employee.find({ companyId, _id: { $in: employeeIds } })
+    .select('_id name employeeNumber')
+    .lean();
+  const empMap = new Map(employees.map((e) => [String(e._id), e]));
+  const employeeMap = {};
+
+  punches.forEach((p) => {
+    const empId = String(p.employeeId);
+    const emp = empMap.get(empId);
+    const empName = emp?.name || p.employeeName || 'Employee';
+    const empNum = emp?.employeeNumber || null;
+    const dayKey = dateKeyLocal(p.punchTime);
+    if (!employeeMap[empId]) {
+      employeeMap[empId] = {
+        employee_id: empId,
+        employee_name: empName,
+        employee_number: empNum,
+        days: {},
+        total_hours: 0,
+      };
+    }
+    if (!employeeMap[empId].days[dayKey]) {
+      employeeMap[empId].days[dayKey] = { date: dayKey, punches: [], hours: 0 };
+    }
+    employeeMap[empId].days[dayKey].punches.push({
+      type: p.punchType,
+      time: p.punchTime,
+      notes: p.notes || null,
+    });
+  });
+
+  Object.values(employeeMap).forEach((emp) => {
+    Object.values(emp.days).forEach((day) => {
+      let clockIn = null;
+      let clockOut = null;
+      let lunchIn = null;
+      let lunchOut = null;
+      day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
+      day.punches.forEach((p) => {
+        if (p.type === 'clock_in') clockIn = new Date(p.time);
+        if (p.type === 'clock_out') clockOut = new Date(p.time);
+        if (p.type === 'lunch_in') lunchIn = new Date(p.time);
+        if (p.type === 'lunch_out') lunchOut = new Date(p.time);
+      });
+      let effectiveClockOut = clockOut;
+      if (clockIn && !clockOut) {
+        const dayEnd = new Date(day.date + 'T23:59:59.999');
+        effectiveClockOut = dayEnd > new Date() ? new Date() : dayEnd;
+      }
+      let hours = 0;
+      if (clockIn && effectiveClockOut) {
+        hours = (effectiveClockOut - clockIn) / (1000 * 60 * 60);
+        if (lunchIn && lunchOut) {
+          hours -= (lunchIn - lunchOut) / (1000 * 60 * 60);
+        }
+        hours = Math.max(0, hours);
+      }
+      day.hours = parseFloat(hours.toFixed(2));
+      emp.total_hours += day.hours;
+    });
+    emp.total_hours = parseFloat(emp.total_hours.toFixed(2));
+  });
+
+  return Object.values(employeeMap);
+}
+
+/** Build PDF buffer from report data. */
+function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    doc.fontSize(18).text('Time Clock Report', { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(11).text(`Employee: ${employeeLabel}`, { align: 'center' });
+    doc.text(`Date Range: ${startDateStr} - ${endDateStr}`, { align: 'center' });
+    doc.text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    doc.moveDown(1);
+
+    reportData.forEach((emp) => {
+      doc.fontSize(14).text(`${emp.employee_name} (${emp.employee_number || ''})`);
+      doc.fontSize(11).text(`Total Hours: ${emp.total_hours}`);
+      doc.moveDown(0.5);
+      const dayList = Object.values(emp.days).sort((a, b) => a.date.localeCompare(b.date));
+      dayList.forEach((day) => {
+        doc.fontSize(10).text(`${formatDate(day.date)} - ${day.hours} hours`);
+        day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
+        day.punches.forEach((p) => {
+          doc.fontSize(9).text(`  ${formatPunchType(p.type)}: ${formatDateTime(p.time)}${p.notes ? ` (${p.notes})` : ''}`, { indent: 15 });
+        });
+        doc.moveDown(0.3);
+      });
+      doc.moveDown(0.5);
+    });
+
+    doc.end();
+  });
+}
+
 // GET /api/reports/weekly?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&employee_id?
 async function weekly(req, res) {
   res.setHeader('Content-Type', 'application/json');
-
   const companyId = req.companyId;
   const user = req.session.user;
-
   const startDate = parseDateOnly(req.query.start_date);
   const endDate = parseDateOnly(req.query.end_date);
+  if (!startDate || !endDate) {
+    return res.status(400).json({ error: 'start_date and end_date are required' });
+  }
+  if (startDate > endDate) {
+    return res.status(400).json({ error: 'start_date must be before or equal to end_date' });
+  }
+  try {
+    const data = await getReportData(companyId, user, startDate, endDate, req.query.employee_id || null);
+    return res.json(data);
+  } catch (err) {
+    console.error('weekly report error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
 
+// POST /api/reports/email — send report as PDF attachment (manager only)
+async function emailReport(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const { to, start_date, end_date, employee_id } = req.body || {};
+  const toEmail = typeof to === 'string' ? to.trim() : '';
+  if (!toEmail) {
+    return res.status(400).json({ error: 'Recipient email (to) is required' });
+  }
+  const startDate = parseDateOnly(start_date);
+  const endDate = parseDateOnly(end_date);
   if (!startDate || !endDate) {
     return res.status(400).json({ error: 'start_date and end_date are required' });
   }
@@ -32,94 +185,45 @@ async function weekly(req, res) {
     return res.status(400).json({ error: 'start_date must be before or equal to end_date' });
   }
 
-  const filter = { companyId };
-  if (user.role === 'employee') {
-    filter.employeeId = user.employee_id;
-  } else if (req.query.employee_id) {
-    filter.employeeId = req.query.employee_id;
+  const companyId = req.companyId;
+  const user = req.session.user;
+  const employeeId = employee_id || null;
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: process.env.SMTP_USER && process.env.SMTP_PASS
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      : undefined,
+  });
+  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'timeclock@localhost';
+
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    return res.status(503).json({ error: 'Email is not configured. Set SMTP_USER and SMTP_PASS in .env to send report emails.' });
   }
 
-  const endInclusive = new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1);
-  filter.punchTime = { $gte: startDate, $lte: endInclusive };
-
   try {
-    const punches = await Punch.find(filter).sort({ employeeId: 1, punchTime: 1 }).lean();
+    const reportData = await getReportData(companyId, user, startDate, endDate, employeeId);
+    const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const employeeLabel = employeeId ? (reportData[0]?.employee_name || 'Employee') : 'All Employees';
+    const pdfBuffer = await buildReportPdf(reportData, startStr, endStr, employeeLabel);
 
-    // Load employee details for employee_number/name (multi-tenant safe)
-    const employeeIds = Array.from(new Set(punches.map((p) => String(p.employeeId))));
-    const employees = await Employee.find({ companyId, _id: { $in: employeeIds } })
-      .select('_id name employeeNumber')
-      .lean();
-    const empMap = new Map(employees.map((e) => [String(e._id), e]));
-
-    const employeeMap = {};
-
-    punches.forEach((p) => {
-      const empId = String(p.employeeId);
-      const emp = empMap.get(empId);
-      const empName = emp?.name || p.employeeName || 'Employee';
-      const empNum = emp?.employeeNumber || null;
-      const dayKey = dateKeyLocal(p.punchTime);
-
-      if (!employeeMap[empId]) {
-        employeeMap[empId] = {
-          employee_id: empId,
-          employee_name: empName,
-          employee_number: empNum,
-          days: {},
-          total_hours: 0,
-        };
-      }
-
-      if (!employeeMap[empId].days[dayKey]) {
-        employeeMap[empId].days[dayKey] = { date: dayKey, punches: [], hours: 0 };
-      }
-
-      employeeMap[empId].days[dayKey].punches.push({
-        type: p.punchType,
-        time: p.punchTime,
-        notes: p.notes || null,
-      });
+    await transporter.sendMail({
+      from: fromEmail,
+      to: toEmail,
+      subject: `Time Clock Report - ${startStr} to ${endStr}`,
+      text: `Please find the time clock report attached (${startStr} to ${endStr}).`,
+      attachments: [{ filename: 'time-clock-report.pdf', content: pdfBuffer }],
     });
 
-    // Calculate hours
-    Object.values(employeeMap).forEach((emp) => {
-      Object.values(emp.days).forEach((day) => {
-        let clockIn = null;
-        let clockOut = null;
-        let lunchIn = null;
-        let lunchOut = null;
-
-        day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
-        day.punches.forEach((p) => {
-          if (p.type === 'clock_in') clockIn = new Date(p.time);
-          if (p.type === 'clock_out') clockOut = new Date(p.time);
-          if (p.type === 'lunch_in') lunchIn = new Date(p.time);
-          if (p.type === 'lunch_out') lunchOut = new Date(p.time);
-        });
-
-        let hours = 0;
-        if (clockIn && clockOut) {
-          hours = (clockOut - clockIn) / (1000 * 60 * 60);
-          if (lunchIn && lunchOut) {
-            const lunchHours = (lunchIn - lunchOut) / (1000 * 60 * 60);
-            hours -= lunchHours;
-          }
-          hours = Math.max(0, hours);
-        }
-
-        day.hours = parseFloat(hours.toFixed(2));
-        emp.total_hours += day.hours;
-      });
-      emp.total_hours = parseFloat(emp.total_hours.toFixed(2));
-    });
-
-    return res.json(Object.values(employeeMap));
+    return res.json({ success: true, message: 'Report sent by email.' });
   } catch (err) {
-    console.error('weekly report error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    console.error('email report error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to send email' });
   }
 }
 
-module.exports = { weekly };
+module.exports = { weekly, emailReport };
 

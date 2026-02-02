@@ -22,6 +22,8 @@
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "express-session": "^1.17.3",
-    "mongoose": "^7.8.8"
+    "mongoose": "^7.8.8",
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.15.0"
   }
 }

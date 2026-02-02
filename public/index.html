@@ -174,9 +174,10 @@
                     <label for="report-end-date">End Date</label>
                     <input type="date" id="report-end-date" required>
                 </div>
-                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
                     <button type="button" id="generate-report-btn" class="btn btn-primary">Generate Report</button>
-                    <button id="print-report-btn" class="btn btn-secondary" style="display: none;">Print Report</button>
+                    <button type="button" id="print-report-btn" class="btn btn-secondary" style="display: none;">Print Report</button>
+                    <button type="button" id="email-report-btn" class="btn btn-secondary" style="display: none;">Email Report</button>
                 </div>
                 <div id="report-results"></div>
             </div>
@@ -272,6 +273,26 @@
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Email Report Modal -->
+    <div id="email-report-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-email-report">&times;</span>
+            <h3>Email Report (PDF)</h3>
+            <p style="color: #666; margin-bottom: 15px; font-size: 14px;">The report will be sent as a PDF attachment to the address below.</p>
+            <form id="email-report-form">
+                <div class="form-group">
+                    <label for="email-report-to">To (email address) *</label>
+                    <input type="email" id="email-report-to" placeholder="recipient@example.com" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-email-report-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Send PDF by Email</button>
+                </div>
+            </form>
+            <div id="email-report-message" style="margin-top: 12px; font-size: 14px;"></div>
         </div>
     </div>
 
