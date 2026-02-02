@@ -1004,13 +1004,17 @@ function removeEmployee(id) {
 
 function handleAddEmployee(e) {
     e.preventDefault();
+    const passwordInput = document.getElementById('emp-password');
     const employee = {
         name: document.getElementById('emp-name').value,
         employee_number: document.getElementById('emp-number').value,
         email: document.getElementById('emp-email').value,
         phone: document.getElementById('emp-phone').value
     };
-    
+    if (passwordInput && passwordInput.value.trim()) {
+        employee.password = passwordInput.value;
+    }
+
     fetch(`${API_BASE}/employees`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1020,7 +1024,7 @@ function handleAddEmployee(e) {
     .then(res => res.json())
         .then(data => {
         if (data.success) {
-            const tempPwd = data.temp_password ? ` Temporary password: ${data.temp_password}` : '';
+            const tempPwd = data.temp_password ? ` Temporary password: ${data.temp_password}` : ' They can log in with the password you set and change it later.';
             showMessage('Employee added successfully!' + tempPwd, 'success');
             document.getElementById('add-employee-modal').classList.add('hidden');
             document.getElementById('add-employee-form').reset();

@@ -93,7 +93,7 @@ async function createEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { name, employee_number, email, phone } = req.body;
+  const { name, employee_number, email, phone, password: initialPassword } = req.body;
 
   if (!name || !employee_number) {
     return res.status(400).json({ error: 'Name and employee number are required' });
@@ -109,9 +109,9 @@ async function createEmployee(req, res) {
       active: true,
     });
 
-    // Create user account for employee (username = employee number)
-    // Generate a one-time temporary password (do NOT hardcode passwords in code).
-    const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
+    // Use manager-provided password if given; otherwise generate a temporary one.
+    const passwordToUse = (initialPassword && String(initialPassword).trim()) || null;
+    const tempPassword = passwordToUse || crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
     const defaultPasswordHash = bcrypt.hashSync(tempPassword, 10);
     await User.create({
       companyId,
@@ -121,7 +121,9 @@ async function createEmployee(req, res) {
       employeeId: employee._id,
     });
 
-    return res.json({ success: true, id: String(employee._id), temp_password: tempPassword });
+    const response = { success: true, id: String(employee._id) };
+    if (!passwordToUse) response.temp_password = tempPassword;
+    return res.json(response);
   } catch (err) {
     console.error('createEmployee error:', err);
     // Duplicate key errors from unique index
