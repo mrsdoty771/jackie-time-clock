@@ -255,6 +255,9 @@ function setupEventListeners() {
         const status = e.target.value;
         loadEmployees(status);
     });
+
+    // Employee Management dropdown: show selected employee details
+    document.getElementById('employee-management-select')?.addEventListener('change', updateEmployeeManagementDetails);
 }
 
 function loadEmployeesForLogin() {
@@ -638,18 +641,44 @@ function loadEmployees(status = 'active') {
 }
 
 function displayEmployees(employeesList) {
-    const container = document.getElementById('employees-list');
+    const select = document.getElementById('employee-management-select');
+    const detailsContainer = document.getElementById('employee-management-details');
+    if (!select || !detailsContainer) return;
+
+    const optionsHtml = '<option value="">-- Select an employee --</option>' +
+        employeesList.map(emp => `<option value="${String(emp.id)}">${emp.name} (${emp.employee_number})</option>`).join('');
+    select.innerHTML = employeesList.length === 0 ? '<option value="">-- Select an employee --</option>' : optionsHtml;
+
     if (employeesList.length === 0) {
-        container.innerHTML = '<p>No employees found. Add your first employee!</p>';
+        detailsContainer.innerHTML = '<p>No employees found. Add your first employee!</p>';
         return;
     }
-    
-    container.innerHTML = employeesList.map(emp => {
-        const statusBadge = emp.active === 1 || emp.active === '1' 
-            ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Active</span>'
-            : '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Inactive</span>';
-        
-        return `
+
+    updateEmployeeManagementDetails();
+}
+
+function updateEmployeeManagementDetails() {
+    const select = document.getElementById('employee-management-select');
+    const detailsContainer = document.getElementById('employee-management-details');
+    if (!select || !detailsContainer) return;
+
+    const selectedId = select.value;
+    if (!selectedId) {
+        detailsContainer.innerHTML = '<p style="color: #666;">Select an employee from the dropdown above to view details and edit or remove.</p>';
+        return;
+    }
+
+    const emp = employees.find(e => String(e.id) === selectedId);
+    if (!emp) {
+        detailsContainer.innerHTML = '<p style="color: #666;">Select an employee from the dropdown above.</p>';
+        return;
+    }
+
+    const statusBadge = emp.active === 1 || emp.active === '1'
+        ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Active</span>'
+        : '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Inactive</span>';
+
+    detailsContainer.innerHTML = `
         <div class="employee-card">
             <div class="employee-info">
                 <h4>${emp.name}${statusBadge}</h4>
@@ -661,7 +690,6 @@ function displayEmployees(employeesList) {
             </div>
         </div>
     `;
-    }).join('');
 }
 
 function loadEmployeesForPunch() {
