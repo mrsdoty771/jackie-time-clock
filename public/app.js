@@ -173,11 +173,11 @@ function setupEventListeners() {
     document.getElementById('lunch-in-btn')?.addEventListener('click', () => handlePunch('lunch_out'));
     document.getElementById('lunch-out-btn')?.addEventListener('click', () => handlePunch('lunch_in'));
     
-    // Manager tabs
+    // Manager tabs — use currentTarget so clicking the label/text still switches the tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const tab = e.target.dataset.tab;
-            switchTab(tab);
+            const tab = e.currentTarget.dataset.tab;
+            if (tab) switchTab(tab);
         });
     });
     
@@ -251,6 +251,24 @@ function setupEventListeners() {
     
     // Company Settings
     document.getElementById('company-settings-form')?.addEventListener('submit', handleCompanySettings);
+
+    // Manager profile (My Account)
+    document.getElementById('manager-profile-form')?.addEventListener('submit', handleManagerProfileSubmit);
+    document.getElementById('send-test-email-btn')?.addEventListener('click', handleSendTestEmail);
+
+    document.getElementById('profile-smtp-password-toggle')?.addEventListener('click', () => {
+        const input = document.getElementById('profile-smtp-password');
+        const btn = document.getElementById('profile-smtp-password-toggle');
+        const showIcon = btn?.querySelector('.pwd-icon-show');
+        const hideIcon = btn?.querySelector('.pwd-icon-hide');
+        if (!input || !btn) return;
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+        btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+        if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
+        if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
+    });
     
     // Employee Status Filter
     document.getElementById('employee-status-filter')?.addEventListener('change', (e) => {
@@ -1413,6 +1431,10 @@ function getFirstName(fullName) {
 }
 
 function switchTab(tabName) {
+    if (!tabName) return;
+    const tabContent = document.getElementById(`${tabName}-tab`);
+    if (!tabContent) return;
+
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -1420,16 +1442,20 @@ function switchTab(tabName) {
             btn.classList.add('active');
         }
     });
-    
+
     // Update tab content
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
     });
-    document.getElementById(`${tabName}-tab`).classList.add('active');
+    tabContent.classList.add('active');
     
     // Load company settings when switching to that tab
     if (tabName === 'company-settings' && (currentUser?.role === 'manager' || currentUser?.role === 'super-admin')) {
         loadCompanySettings();
+    }
+    // Load manager profile when switching to My Account
+    if (tabName === 'my-account' && (currentUser?.role === 'manager' || currentUser?.role === 'super-admin')) {
+        loadManagerProfile();
     }
 }
 
@@ -1446,6 +1472,166 @@ function loadCompanySettings() {
         })
         .catch(err => {
             console.error('Error loading company settings:', err);
+        });
+}
+
+function loadManagerProfile() {
+    const msgEl = document.getElementById('manager-profile-message');
+    const emailMsgEl = document.getElementById('email-setup-message');
+    fetch(`${API_BASE}/profile`, { credentials: 'include' })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim().startsWith('{')) data = JSON.parse(text);
+                else data = { error: 'Server returned an unexpected response.' };
+            } catch (_) {
+                data = { error: 'Server returned an unexpected response. Check that the server is running.' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (data.error) {
+                msgEl.textContent = data.error;
+                msgEl.style.color = 'red';
+                return;
+            }
+            if (data.id || data.username) {
+                document.getElementById('profile-username').value = data.username || '';
+                document.getElementById('profile-name').value = data.name || '';
+                document.getElementById('profile-email').value = data.email || '';
+                document.getElementById('profile-ext').value = data.ext || '';
+                document.getElementById('profile-new-password').value = '';
+                document.getElementById('profile-confirm-password').value = '';
+                document.getElementById('profile-display-name').value = data.displayName || '';
+                document.getElementById('profile-smtp-user').value = data.smtpUser || '';
+                document.getElementById('profile-smtp-password').value = data.smtpPassword || '';
+                document.getElementById('profile-smtp-host').value = data.smtpHost || '';
+                document.getElementById('profile-smtp-port').value = data.smtpPort !== '' && data.smtpPort != null ? data.smtpPort : '';
+                document.getElementById('profile-smtp-secure').checked = !!data.smtpSecure;
+                document.getElementById('profile-default-email-body').value = data.defaultEmailBody || '';
+                msgEl.textContent = '';
+                if (emailMsgEl) emailMsgEl.textContent = '';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading profile:', err);
+            msgEl.textContent = err.message || 'Could not load profile.';
+            msgEl.style.color = 'red';
+        });
+}
+
+function handleSendTestEmail() {
+    const to = document.getElementById('test-email-to')?.value?.trim();
+    const msgEl = document.getElementById('email-setup-message');
+    if (!msgEl) return;
+    if (!to) {
+        msgEl.textContent = 'Enter an email address in the To field.';
+        msgEl.style.color = 'red';
+        return;
+    }
+    msgEl.textContent = 'Sending test email...';
+    msgEl.style.color = '#666';
+    fetch(`${API_BASE}/profile/test-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to }),
+        credentials: 'include'
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                const trimmed = text.trim();
+                if (trimmed) data = JSON.parse(trimmed);
+            } catch (_) {
+                data = { error: 'Server returned an unexpected response. Restart the server and try again, or check the server terminal for errors.' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                msgEl.textContent = 'Test email sent.';
+                msgEl.style.color = 'green';
+            } else {
+                msgEl.textContent = data.error || 'Failed to send test email.';
+                msgEl.style.color = 'red';
+            }
+        })
+        .catch(err => {
+            msgEl.textContent = err.message || 'Failed to send test email.';
+            msgEl.style.color = 'red';
+        });
+}
+
+function handleManagerProfileSubmit(e) {
+    e.preventDefault();
+    const msgEl = document.getElementById('manager-profile-message');
+    const name = document.getElementById('profile-name').value.trim();
+    const email = document.getElementById('profile-email').value.trim();
+    const ext = document.getElementById('profile-ext').value.trim();
+    const newPassword = document.getElementById('profile-new-password').value;
+    const confirmPassword = document.getElementById('profile-confirm-password').value;
+
+    if (newPassword && newPassword !== confirmPassword) {
+        msgEl.textContent = 'New password and confirm password do not match.';
+        msgEl.style.color = 'red';
+        return;
+    }
+
+    msgEl.textContent = 'Saving...';
+    msgEl.style.color = '#666';
+
+    const body = { name, email, ext };
+    if (newPassword && newPassword.trim()) body.newPassword = newPassword.trim();
+    body.displayName = document.getElementById('profile-display-name')?.value?.trim() || '';
+    body.smtpUser = document.getElementById('profile-smtp-user')?.value?.trim() || '';
+    body.smtpHost = document.getElementById('profile-smtp-host')?.value?.trim() || '';
+    const portVal = document.getElementById('profile-smtp-port')?.value;
+    body.smtpPort = portVal !== '' && portVal != null ? parseInt(portVal, 10) : null;
+    body.smtpSecure = document.getElementById('profile-smtp-secure')?.checked || false;
+    body.defaultEmailBody = document.getElementById('profile-default-email-body')?.value?.trim() || '';
+    const smtpPassword = document.getElementById('profile-smtp-password')?.value?.trim();
+    if (smtpPassword) body.smtpPassword = smtpPassword;
+
+    fetch(`${API_BASE}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include'
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim().startsWith('{')) data = JSON.parse(text);
+                else data = { error: 'Server returned an unexpected response.' };
+            } catch (_) {
+                data = { error: 'Server returned an unexpected response. Check that the server is running.' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                msgEl.textContent = 'Profile updated successfully.';
+                msgEl.style.color = 'green';
+                if (currentUser) {
+                    currentUser.name = name || null;
+                    currentUser.email = email || null;
+                    currentUser.ext = ext || null;
+                }
+                document.getElementById('profile-new-password').value = '';
+                document.getElementById('profile-confirm-password').value = '';
+                document.getElementById('profile-smtp-password').value = data.smtpPassword || '';
+                loadManagerProfile();
+            } else {
+                msgEl.textContent = data.error || 'Failed to update profile.';
+                msgEl.style.color = 'red';
+            }
+        })
+        .catch(err => {
+            msgEl.textContent = err.message || 'Failed to update profile.';
+            msgEl.style.color = 'red';
         });
 }
 

@@ -38,7 +38,7 @@
             <h2>Time Clock</h2>
             <div>
                 <span id="employee-name"></span>
-                <button id="logout-btn" class="btn btn-secondary">Logout</button>
+                <button id="logout-btn" class="btn btn-logout">Logout</button>
             </div>
         </nav>
         
@@ -77,7 +77,7 @@
     <div id="manager-page" class="page hidden">
         <nav class="navbar">
             <h2>Manager Dashboard</h2>
-            <button id="manager-logout-btn" class="btn btn-secondary">Logout</button>
+            <button id="manager-logout-btn" class="btn btn-logout">Logout</button>
         </nav>
         
         <div class="container">
@@ -87,6 +87,7 @@
                 <button class="tab-btn" data-tab="edit-punches">Edit Employee Punches</button>
                 <button class="tab-btn" data-tab="reports">Reports</button>
                 <button class="tab-btn" data-tab="company-settings">Company Settings</button>
+                <button class="tab-btn" data-tab="my-account">My Account</button>
             </div>
             
             <!-- Employees Tab -->
@@ -182,6 +183,92 @@
                 <div id="report-results"></div>
             </div>
             
+            <!-- My Account Tab -->
+            <div id="my-account-tab" class="tab-content">
+                <h3>Manager Account</h3>
+                <p style="color: #666; margin-bottom: 20px;">Your name, email, extension, and password. Only managers see this tab.</p>
+                <form id="manager-profile-form" class="form">
+                    <div class="form-group">
+                        <label for="profile-name">Name</label>
+                        <input type="text" id="profile-name" placeholder="Your display name">
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-email">Email</label>
+                        <input type="email" id="profile-email" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-ext">Extension</label>
+                        <input type="text" id="profile-ext" placeholder="e.g. 101">
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-username">Username (login)</label>
+                        <input type="text" id="profile-username" readonly disabled style="background: #eee; cursor: not-allowed;">
+                        <small style="color: #666;">Username cannot be changed here.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-new-password">New Password</label>
+                        <input type="password" id="profile-new-password" placeholder="Leave blank to keep current password" autocomplete="new-password">
+                        <small style="color: #666;">Leave blank to keep your current password.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-confirm-password">Confirm New Password</label>
+                        <input type="password" id="profile-confirm-password" placeholder="Confirm new password" autocomplete="new-password">
+                    </div>
+
+                    <hr style="margin: 25px 0; border: 0; border-top: 1px solid #ddd;">
+                    <h4 style="margin-bottom: 8px;">E-mail Address Setup</h4>
+                    <p style="color: #666; margin-bottom: 15px; font-size: 14px;">When you are logged in, report emails will be sent from this address.</p>
+                    <div class="form-group">
+                        <label for="profile-display-name">"From" Display Name</label>
+                        <input type="text" id="profile-display-name" placeholder="e.g. John Smith">
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-smtp-user">"From" E-mail Address</label>
+                        <input type="email" id="profile-smtp-user" placeholder="your@myvaluecars.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-smtp-password">E-mail Password</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="profile-smtp-password" placeholder="E-mail / app password" autocomplete="new-password">
+                            <button type="button" id="profile-smtp-password-toggle" class="password-toggle-btn" aria-label="Show password" title="Show password">
+                                <svg class="pwd-icon pwd-icon-show" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg class="pwd-icon pwd-icon-hide" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                        <small style="color: #666;">Your saved password is shown above. Use the eye icon to show or hide it.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-smtp-host">SMTP Server</label>
+                        <input type="text" id="profile-smtp-host" placeholder="e.g. smtp.office365.com">
+                    </div>
+                    <div class="form-group" style="display: flex; gap: 20px; align-items: center;">
+                        <div style="flex: 1;">
+                            <label for="profile-smtp-port">Port</label>
+                            <input type="number" id="profile-smtp-port" placeholder="587" min="1" max="65535">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; margin-bottom: 8px;">Enable SSL</label>
+                            <input type="checkbox" id="profile-smtp-secure" style="width: auto;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-default-email-body">Default E-mail Body</label>
+                        <textarea id="profile-default-email-body" rows="4" placeholder="Optional default message for report emails."></textarea>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 15px;">
+                        <button type="button" id="send-test-email-btn" class="btn btn-secondary">Send Test Email</button>
+                        <span style="display: inline-flex; align-items: center; gap: 8px;">
+                            <label for="test-email-to" style="margin: 0;">To:</label>
+                            <input type="email" id="test-email-to" placeholder="recipient@example.com" style="width: 220px;">
+                        </span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+                <div id="manager-profile-message" style="margin-top: 15px;"></div>
+                <div id="email-setup-message" style="margin-top: 8px;"></div>
+            </div>
+
             <!-- Company Settings Tab -->
             <div id="company-settings-tab" class="tab-content">
                 <h3>Company Settings</h3>

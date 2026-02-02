@@ -91,6 +91,39 @@ body {
     border-color: #667eea;
 }
 
+/* Password field with show/hide toggle */
+.password-input-wrap {
+    position: relative;
+    width: 100%;
+}
+.password-input-wrap input {
+    padding-right: 44px;
+}
+.password-toggle-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.password-toggle-btn:hover {
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+}
+.password-toggle-btn .pwd-icon {
+    pointer-events: none;
+}
+
 /* --- Buttons --- */
 .btn {
     padding: 12px 24px;
@@ -109,6 +142,8 @@ body {
 .btn-warning { background: #ffc107; color: #333; width: 100%; }
 .btn-info { background: #17a2b8; color: white; width: 100%; }
 .btn-secondary { background: #6c757d; color: white; }
+.btn-logout { background: #ff6347; color: white; }
+.btn-logout:hover { background: #ff7a62; }
 
 .btn:hover {
     opacity: 0.9;
@@ -117,12 +152,24 @@ body {
 }
 
 /* --- Sections & Cards --- */
-.punch-section, .records-section, .tab-content {
+.punch-section, .records-section {
     background: white;
     padding: 25px;
     border-radius: 10px;
     margin-bottom: 20px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.tab-content {
+    display: none;
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+.tab-content.active {
+    display: block;
 }
 
 .punch-buttons {
@@ -142,7 +189,7 @@ body {
 
 .tab-btn {
     padding: 12px 20px;
-    background: rgba(255,255,255,0.2);
+    background: #ff6347;
     border: none;
     color: white;
     border-radius: 5px;
@@ -150,9 +197,13 @@ body {
     white-space: nowrap;
 }
 
+.tab-btn:hover {
+    background: #ff7a62;
+}
+
 .tab-btn.active {
     background: white;
-    color: #667eea;
+    color: #ff6347;
     font-weight: bold;
 }
 

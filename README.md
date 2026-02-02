@@ -84,6 +84,20 @@ This project supports **multi-tenant** usage via `companyId` (the “apartment b
    - Select an employee (or leave as "All Employees")
    - Choose the week starting date (Monday)
    - Click "Generate Report" to see hours worked
+   - Click "Email Report" to send the report as a PDF attachment (requires SMTP setup below)
+
+### Email Report (PDF)
+
+To use **Email Report** (send the weekly report as a PDF attachment):
+
+1. Copy `.env.example` to `.env` in the project root (if you don’t have a `.env` yet).
+2. In `.env`, set:
+   - `SMTP_USER` – your sending email (e.g. Gmail address)
+   - `SMTP_PASS` – for Gmail, use an [App Password](https://myaccount.google.com/apppasswords), not your normal password
+   - Optionally: `SMTP_HOST` (default `smtp.gmail.com`), `SMTP_PORT` (default `587`), `SMTP_FROM`
+3. Restart the server so it picks up the new values.
+
+Without `SMTP_USER` and `SMTP_PASS`, the app will show: *Email is not configured…* when you try to send a report.
 
 ## Database
 
@@ -105,6 +119,7 @@ The application uses MongoDB. Key collections include:
 - **Port Already in Use**: Change the PORT in `server.js` or set `PORT` environment variable
 - **Database Errors**: Verify `DATABASE_URL` is a complete MongoDB connection string
 - **Login Issues**: Verify your user exists for the correct `companyId`
+- **Email is not configured**: Add `SMTP_USER` and `SMTP_PASS` to `.env` (see "Email Report (PDF)" above), then restart the server
 
 ## File Structure
 

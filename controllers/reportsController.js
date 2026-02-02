@@ -1,7 +1,9 @@
 const Punch = require('../models/Punch');
 const Employee = require('../models/Employee');
+const User = require('../models/User');
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
+const { decrypt } = require('../utils/encrypt');
 
 function parseDateOnly(dateStr) {
   if (!dateStr) return null;
@@ -186,22 +188,49 @@ async function emailReport(req, res) {
   }
 
   const companyId = req.companyId;
-  const user = req.session.user;
+  const sessionUser = req.session.user;
   const employeeId = employee_id || null;
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: process.env.SMTP_USER && process.env.SMTP_PASS
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      : undefined,
-  });
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'timeclock@localhost';
+  let transporter;
+  let fromEmail;
+  let fromName = null;
 
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    return res.status(503).json({ error: 'Email is not configured. Set SMTP_USER and SMTP_PASS in .env to send report emails.' });
+  const dbUser = await User.findOne({ _id: sessionUser.id, companyId }).lean();
+  const useManagerSmtp = dbUser && dbUser.smtpHost && dbUser.smtpUser && dbUser.smtpPassEncrypted;
+  const smtpPass = useManagerSmtp ? decrypt(dbUser.smtpPassEncrypted) : null;
+
+  if (useManagerSmtp && smtpPass) {
+    const port = Number(dbUser.smtpPort) || 587;
+    const secure = port === 465; // 587/25 use STARTTLS
+    const host = (dbUser.smtpHost || '').toLowerCase();
+    transporter = nodemailer.createTransport({
+      host: dbUser.smtpHost,
+      port,
+      secure,
+      requireTLS: !secure && (host.includes('office365') || host.includes('gmail') || true),
+      auth: { user: dbUser.smtpUser, pass: smtpPass },
+    });
+    fromEmail = dbUser.smtpUser;
+    fromName = (dbUser.displayName || dbUser.name || '').trim() || null;
+  } else if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const secure = port === 465; // 587/25 use STARTTLS
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port,
+      secure,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+    fromEmail = (sessionUser && sessionUser.email && String(sessionUser.email).trim()) || process.env.SMTP_FROM || process.env.SMTP_USER || 'timeclock@localhost';
+    fromName = (sessionUser && (sessionUser.name || sessionUser.displayName)) || null;
+  } else {
+    return res.status(503).json({
+      error: 'Email is not configured. Either set up E-mail Address Setup in My Account (From email, SMTP server, port, password) and save, or add SMTP_USER and SMTP_PASS to .env. See SMTP_SETUP.md.',
+    });
   }
+
+  const fromField = fromName ? `"${fromName.replace(/"/g, '\\"')}" <${fromEmail}>` : fromEmail;
+  const user = sessionUser;
 
   try {
     const reportData = await getReportData(companyId, user, startDate, endDate, employeeId);
@@ -210,18 +239,24 @@ async function emailReport(req, res) {
     const employeeLabel = employeeId ? (reportData[0]?.employee_name || 'Employee') : 'All Employees';
     const pdfBuffer = await buildReportPdf(reportData, startStr, endStr, employeeLabel);
 
+    const defaultBody = (dbUser && dbUser.defaultEmailBody) || `Please find the time clock report attached (${startStr} to ${endStr}).`;
     await transporter.sendMail({
-      from: fromEmail,
+      from: fromField,
       to: toEmail,
       subject: `Time Clock Report - ${startStr} to ${endStr}`,
-      text: `Please find the time clock report attached (${startStr} to ${endStr}).`,
+      text: defaultBody,
       attachments: [{ filename: 'time-clock-report.pdf', content: pdfBuffer }],
     });
 
     return res.json({ success: true, message: 'Report sent by email.' });
   } catch (err) {
     console.error('email report error:', err);
-    return res.status(500).json({ error: err.message || 'Failed to send email' });
+    const errorMessage =
+      (err.response && String(err.response).trim()) ||
+      (err.message && String(err.message).trim()) ||
+      (err.code && `Error code: ${err.code}`) ||
+      'Failed to send email';
+    return res.status(500).json({ error: errorMessage });
   }
 }
 
