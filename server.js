@@ -1,12 +1,12 @@
-// 1. Load environment variables first
-require('dotenv').config();
+// 1. Load environment variables first (from project root, same folder as server.js)
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // 2. Import core libraries
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-const path = require('path');
 const cors = require('cors');
 
 // 3. Initialize the app
@@ -47,6 +47,24 @@ app.use(
     name: 'timeclock.sid',
   })
 );
+
+// Idle timeout: require re-login after 5 minutes of no activity on any API request
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+app.use('/api', (req, res, next) => {
+  if (!req.session || !req.session.user) return next();
+  const now = Date.now();
+  const last = req.session.lastActivity;
+  if (last != null && now - last > IDLE_TIMEOUT_MS) {
+    req.session.destroy((err) => {
+      if (err) return next(err);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(401).json({ error: 'Session expired due to inactivity. Please log in again.' });
+    });
+    return;
+  }
+  req.session.lastActivity = now;
+  next();
+});
 
 // 6. Connect Routes
 app.use('/api', authRoutes);

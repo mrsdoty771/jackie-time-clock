@@ -1,5 +1,6 @@
 const Punch = require('../models/Punch');
 const Employee = require('../models/Employee');
+const { sendPunchNotification } = require('../utils/sms');
 
 function parseDateOnly(dateStr) {
   if (!dateStr) return null;
@@ -39,6 +40,8 @@ async function createPunch(req, res) {
       notes: notes || null,
       createdBy: user.id,
     });
+
+    sendPunchNotification(emp.name, punch_type, punch.punchTime);
 
     return res.json({ success: true, id: String(punch._id) });
   } catch (err) {

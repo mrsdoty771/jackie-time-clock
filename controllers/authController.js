@@ -67,6 +67,7 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Wrong password. Please try again.' });
     }
 
+    req.session.lastActivity = Date.now();
     req.session.user = {
       id: String(user._id),
       username: user.username,

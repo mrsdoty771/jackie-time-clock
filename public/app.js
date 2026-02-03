@@ -8,6 +8,31 @@ let currentWeekStart = null;
 let loginOptions = { superAdmin: null };
 let lastReportData = null;
 
+// When any API returns 401 (e.g. idle timeout), show login and message
+function handleSessionExpired(message) {
+    currentUser = null;
+    showLoginPage();
+    const msgEl = document.getElementById('message');
+    if (msgEl) {
+        msgEl.textContent = message || 'Session expired due to inactivity. Please log in again.';
+        msgEl.classList.remove('hidden');
+        msgEl.style.color = '#666';
+    }
+}
+
+// Wrap fetch so 401 from API triggers session-expired handling
+const _originalFetch = window.fetch;
+window.fetch = function (url) {
+    const urlStr = typeof url === 'string' ? url : (url && url.url) || '';
+    const isApi = urlStr.indexOf(API_BASE) !== -1;
+    return _originalFetch.apply(this, arguments).then(function (res) {
+        if (isApi && res.status === 401) {
+            handleSessionExpired('Session expired due to inactivity. Please log in again.');
+        }
+        return res;
+    });
+};
+
 // Initialize (run when DOM is ready; if app.js loads late, DOMContentLoaded may have already fired)
 function init() {
     loadCompanyNameForLogin();
@@ -790,15 +815,19 @@ function updateEmployeeManagementDetails() {
 }
 
 function loadEmployeesForPunch() {
+    const select = document.getElementById('punch-employee');
+    if (!select) return;
     fetch(`${API_BASE}/employees`, {
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
-            const select = document.getElementById('punch-employee');
-            select.innerHTML = data.map(emp => 
-                `<option value="${emp.id}">${emp.name} (${emp.employee_number})</option>`
-            ).join('');
+            const list = Array.isArray(data) ? data : [];
+            select.innerHTML = '<option value="">-- Select Employee --</option>' +
+                list.map(emp => `<option value="${emp.id}">${emp.name} (${emp.employee_number || ''})</option>`).join('');
+        })
+        .catch(() => {
+            select.innerHTML = '<option value="">-- Error loading employees --</option>';
         });
 }
 
@@ -1145,30 +1174,44 @@ function handleAddEmployee(e) {
 
 function handleManualPunch(e) {
     e.preventDefault();
+    const employeeId = document.getElementById('punch-employee')?.value?.trim();
+    if (!employeeId) {
+        showMessage('Please select an employee.', 'error');
+        return;
+    }
     const punch = {
-        employee_id: document.getElementById('punch-employee').value,
+        employee_id: employeeId,
         punch_type: document.getElementById('punch-type').value,
         notes: document.getElementById('punch-notes').value.trim() || null
     };
-    
+
     fetch(`${API_BASE}/punch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(punch),
         credentials: 'include'
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            showMessage('Punch recorded successfully!', 'success');
-            document.getElementById('manual-punch-form').reset();
-        } else {
-            showMessage(data.error || 'Failed to record punch', 'error');
-        }
-    })
-    .catch(err => {
-        showMessage('Error recording punch', 'error');
-    });
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim()) data = JSON.parse(text);
+            } catch (_) {}
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                showMessage('Punch recorded successfully!', 'success');
+                document.getElementById('manual-punch-form').reset();
+                const select = document.getElementById('punch-employee');
+                if (select && select.options.length) select.selectedIndex = 0;
+            } else {
+                showMessage(data.error || 'Failed to record punch', 'error');
+            }
+        })
+        .catch(() => {
+            showMessage('Error recording punch. Check the server and try again.', 'error');
+        });
 }
 
 function generateReport() {
@@ -1531,6 +1574,10 @@ function switchTab(tabName) {
     // Load manager profile when switching to My Account
     if (tabName === 'my-account' && (currentUser?.role === 'manager' || currentUser?.role === 'super-admin')) {
         loadManagerProfile();
+    }
+    // Refresh employee list when switching to Manual Punch
+    if (tabName === 'punches') {
+        loadEmployeesForPunch();
     }
 }
 
