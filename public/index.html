@@ -85,7 +85,8 @@
         
         <div class="container">
             <div class="tabs">
-                <button class="tab-btn active" data-tab="employees">Employees</button>
+                <button class="tab-btn active" data-tab="my-clock">My Clock</button>
+                <button class="tab-btn" data-tab="employees">Employees</button>
                 <button class="tab-btn" data-tab="punches">Manual Punch</button>
                 <button class="tab-btn" data-tab="edit-punches">Edit Employee Punches</button>
                 <button class="tab-btn" data-tab="reports">Reports</button>
@@ -93,8 +94,39 @@
                 <button class="tab-btn" data-tab="my-account">My Account</button>
             </div>
             
+            <!-- My Clock Tab (manager clock in/out) -->
+            <div id="my-clock-tab" class="tab-content active">
+                <div id="my-clock-no-link" class="form-group hidden" style="padding: 16px; background: #f8f8f8; border-radius: 8px;">
+                    <p style="margin: 0; color: #666;">To clock in here, add yourself as an employee in the <strong>Employees</strong> tab, then use <strong>Manual Punch</strong> and select yourself. Or ask an admin to link your manager account to your employee record.</p>
+                </div>
+                <div id="my-clock-section" class="my-clock-section">
+                    <h3>My Clock In / Out</h3>
+                    <div class="form-group">
+                        <label for="my-clock-note">Note (optional)</label>
+                        <textarea id="my-clock-note" rows="2" placeholder="e.g. Working from home"></textarea>
+                    </div>
+                    <div class="punch-section">
+                        <div class="punch-buttons">
+                            <button id="my-clock-in-btn" class="btn btn-success">Clock In</button>
+                            <button id="my-clock-out-btn" class="btn btn-danger">Clock Out</button>
+                        </div>
+                    </div>
+                    <div class="punch-section">
+                        <h4 style="margin-bottom: 8px;">Lunch</h4>
+                        <div class="punch-buttons">
+                            <button id="my-lunch-in-btn" class="btn btn-warning">Go to Lunch</button>
+                            <button id="my-lunch-out-btn" class="btn btn-info">Return from Lunch</button>
+                        </div>
+                    </div>
+                    <div class="records-section">
+                        <h4>My Recent Punches</h4>
+                        <div id="my-clock-records"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Employees Tab -->
-            <div id="employees-tab" class="tab-content active">
+            <div id="employees-tab" class="tab-content">
                 <div class="section-header">
                     <h3>Employee Management</h3>
                     <button id="add-employee-btn" class="btn btn-primary">Add Employee</button>
@@ -209,6 +241,13 @@
                         <small style="color: #666;">Username cannot be changed here.</small>
                     </div>
                     <div class="form-group">
+                        <label for="profile-link-employee">Use for My Clock</label>
+                        <select id="profile-link-employee">
+                            <option value="">— None —</option>
+                        </select>
+                        <small style="color: #666;">Link your account to an employee so you can use the My Clock tab to punch in/out.</small>
+                    </div>
+                    <div class="form-group">
                         <label for="profile-new-password">New Password</label>
                         <input type="password" id="profile-new-password" placeholder="Leave blank to keep current password" autocomplete="new-password">
                         <small style="color: #666;">Leave blank to keep your current password.</small>
@@ -301,6 +340,22 @@
                 </form>
                 <div id="company-settings-message" style="margin-top: 15px;"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Grant Manager Rights Modal -->
+    <div id="grant-manager-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-grant-manager">&times;</span>
+            <h3>Grant manager rights</h3>
+            <p id="grant-manager-employee-name" style="color: #666; margin-bottom: 15px;"></p>
+            <p style="color: #666; font-size: 14px; margin-bottom: 15px;">They will keep logging in with their <strong>name</strong> and <strong>password</strong> (same as now). After you grant, they will see the manager dashboard instead of the employee time clock. My Clock will work automatically.</p>
+            <div class="form-actions">
+                <input type="hidden" id="grant-manager-employee-id">
+                <button type="button" class="btn btn-secondary" id="cancel-grant-manager-btn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-grant-manager-btn">Grant manager rights</button>
+            </div>
+            <div id="grant-manager-message" style="margin-top: 12px; font-size: 14px;"></div>
         </div>
     </div>
 

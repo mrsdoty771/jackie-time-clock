@@ -72,16 +72,42 @@ async function listEmployees(req, res) {
     if (status === 'inactive') filter.active = false;
 
     const employees = await Employee.find(filter).sort({ name: 1 }).lean();
+    const employeeIds = employees.map((e) => e._id);
+
+    // For managers: which employees have a manager login?
+    let managerMap = {};
+    if (req.session.user.role === 'manager' || req.session.user.role === 'super-admin') {
+      const managerUsers = await User.find({
+        companyId,
+        role: 'manager',
+        employeeId: { $in: employeeIds },
+      })
+        .select('username employeeId')
+        .lean();
+      managerUsers.forEach((u) => {
+        managerMap[String(u.employeeId)] = u.username || '';
+      });
+    }
 
     return res.json(
-      employees.map((e) => ({
-        id: String(e._id),
-        name: e.name,
-        employee_number: e.employeeNumber,
-        email: e.email || null,
-        phone: e.phone || null,
-        active: e.active ? 1 : 0,
-      }))
+      employees.map((e) => {
+        const out = {
+          id: String(e._id),
+          name: e.name,
+          employee_number: e.employeeNumber,
+          email: e.email || null,
+          phone: e.phone || null,
+          active: e.active ? 1 : 0,
+        };
+        if (managerMap[String(e._id)] !== undefined) {
+          out.has_manager = true;
+          out.manager_username = managerMap[String(e._id)];
+        } else {
+          out.has_manager = false;
+          out.manager_username = null;
+        }
+        return out;
+      })
     );
   } catch (err) {
     console.error('listEmployees error:', err);
@@ -104,6 +130,7 @@ async function getEmployee(req, res) {
         password = decrypt(user.passwordDisplayEncrypted) || '';
       } catch (_) {}
     }
+    const managerUser = await User.findOne({ companyId, employeeId: employee._id, role: 'manager' }).select('username').lean();
     return res.json({
       id: String(employee._id),
       name: employee.name || '',
@@ -112,6 +139,8 @@ async function getEmployee(req, res) {
       phone: employee.phone || '',
       active: employee.active ? 1 : 0,
       password,
+      has_manager: !!managerUser,
+      manager_username: managerUser ? managerUser.username : null,
     });
   } catch (err) {
     console.error('getEmployee error:', err);
@@ -286,6 +315,58 @@ async function deactivateEmployee(req, res) {
   }
 }
 
+// POST /api/employees/:id/grant-manager (manager only) — upgrade this employee's account to manager role; they keep same login (name + password)
+async function grantManager(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
+  const companyId = req.companyId;
+  const { id } = req.params;
+
+  try {
+    const employee = await Employee.findOne({ _id: id, companyId }).lean();
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    const user = await User.findOne({ companyId, employeeId: employee._id, role: 'employee' });
+    if (!user) return res.status(404).json({ error: 'Employee user account not found' });
+
+    if (user.role === 'manager') {
+      return res.status(400).json({ error: 'This employee already has manager rights.' });
+    }
+
+    user.role = 'manager';
+    await user.save();
+
+    return res.json({ success: true, message: 'Manager rights granted. They will keep logging in with their name and password and will see the manager dashboard.' });
+  } catch (err) {
+    console.error('grantManager error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
+// POST /api/employees/:id/revoke-manager (manager only) — set role back to employee; they keep same login
+async function revokeManager(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
+  const companyId = req.companyId;
+  const { id } = req.params;
+
+  try {
+    const employee = await Employee.findOne({ _id: id, companyId }).lean();
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
+    const result = await User.updateOne(
+      { companyId, employeeId: employee._id, role: 'manager' },
+      { $set: { role: 'employee' } }
+    );
+    if (!result.matchedCount) return res.status(404).json({ error: 'This employee does not have manager rights' });
+
+    return res.json({ success: true, message: 'Manager rights revoked. They will keep the same login and see the employee time clock.' });
+  } catch (err) {
+    console.error('revokeManager error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
 module.exports = {
   listPublicEmployees,
   listEmployees,
@@ -294,5 +375,7 @@ module.exports = {
   updateEmployee,
   setEmployeePassword,
   deactivateEmployee,
+  grantManager,
+  revokeManager,
 };
 

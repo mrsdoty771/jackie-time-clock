@@ -12,6 +12,8 @@ router.post('/employees', requireAuth, requireCompany, requireManager, employeeC
 router.put('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.updateEmployee);
 router.put('/employees/:id/password', requireAuth, requireCompany, requireManager, employeeController.setEmployeePassword);
 router.delete('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.deactivateEmployee);
+router.post('/employees/:id/grant-manager', requireAuth, requireCompany, requireManager, employeeController.grantManager);
+router.post('/employees/:id/revoke-manager', requireAuth, requireCompany, requireManager, employeeController.revokeManager);
 
 module.exports = router;
 

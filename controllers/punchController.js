@@ -22,9 +22,18 @@ async function createPunch(req, res) {
     return res.status(400).json({ error: 'Invalid punch type' });
   }
 
-  // Employees can only punch themselves, managers can punch anyone
-  const targetEmployeeId = user.role === 'manager' ? employee_id : user.employee_id;
-  if (!targetEmployeeId) return res.status(400).json({ error: 'Employee ID required' });
+  // Employees punch themselves; managers can punch someone (employee_id) or themselves (omit employee_id)
+  let targetEmployeeId =
+    user.role === 'manager'
+      ? (employee_id || (user.employee_id ? String(user.employee_id) : null))
+      : user.employee_id;
+  if (!targetEmployeeId) {
+    return res.status(400).json({
+      error: user.role === 'manager'
+        ? 'To clock in from the dashboard, add yourself as an employee and link your manager account, or use Manual Punch and select yourself.'
+        : 'Employee ID required',
+    });
+  }
 
   try {
     // Ensure employee belongs to this company and is active

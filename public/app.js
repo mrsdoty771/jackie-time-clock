@@ -241,7 +241,12 @@ function setupEventListeners() {
     document.querySelector('.close')?.addEventListener('click', () => {
         document.getElementById('add-employee-modal').classList.add('hidden');
     });
-    
+
+    // Grant manager rights modal
+    document.getElementById('confirm-grant-manager-btn')?.addEventListener('click', handleConfirmGrantManager);
+    document.getElementById('cancel-grant-manager-btn')?.addEventListener('click', () => document.getElementById('grant-manager-modal')?.classList.add('hidden'));
+    document.querySelector('.close-grant-manager')?.addEventListener('click', () => document.getElementById('grant-manager-modal')?.classList.add('hidden'));
+
     // Edit employee modal
     document.getElementById('edit-employee-form')?.addEventListener('submit', handleEditEmployee);
     document.getElementById('cancel-edit-btn')?.addEventListener('click', () => {
@@ -283,6 +288,11 @@ function setupEventListeners() {
         });
     }
     
+    // My Clock (manager self punch)
+    document.getElementById('my-clock-in-btn')?.addEventListener('click', () => handleManagerPunch('clock_in'));
+    document.getElementById('my-clock-out-btn')?.addEventListener('click', () => handleManagerPunch('clock_out'));
+    document.getElementById('my-lunch-in-btn')?.addEventListener('click', () => handleManagerPunch('lunch_out'));
+    document.getElementById('my-lunch-out-btn')?.addEventListener('click', () => handleManagerPunch('lunch_in'));
     // Manual punch
     document.getElementById('manual-punch-form')?.addEventListener('submit', handleManualPunch);
     
@@ -394,21 +404,28 @@ function loadEmployeesForLogin() {
 
     const companyId = getLoginCompanyId();
 
+    const loginOptionsUrl = companyId
+        ? `${API_BASE}/login-options?companyId=${encodeURIComponent(companyId)}`
+        : `${API_BASE}/login-options`;
     Promise.all([
-        fetch(`${API_BASE}/login-options`, { credentials: 'include' }).then(r => r.json()),
+        fetch(loginOptionsUrl, { credentials: 'include' }).then(r => r.json()),
         companyId ? fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`).then(r => r.json()) : Promise.resolve([])
     ]).then(([opts, empData]) => {
         loginOptions = opts || { superAdmin: null };
         const superAdminOpt = loginOptions.superAdmin
             ? '<option value="superadmin">Super Admin</option>'
             : '';
+        const managerOpts = (opts.managers || []).map(m =>
+            `<option value="mgr_${escapeHtml(m.username)}">${escapeHtml(m.name)} (Manager)</option>`
+        ).join('');
         const employeeOptions = (empData || []).map(emp =>
-            `<option value="emp_${emp.id}">${emp.name}</option>`
+            `<option value="emp_${emp.id}">${escapeHtml(emp.name)}</option>`
         ).join('');
         select.innerHTML = '<option value="">-- Select Name --</option>' +
             '<option value="admin">Admin (Manager)</option>' +
             '<option value="Josh">Josh</option>' +
             superAdminOpt +
+            managerOpts +
             employeeOptions;
         if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
             select.value = previousValue;
@@ -464,6 +481,9 @@ function handleLogin(e) {
         loginData = { username: 'admin', password, companyId };
     } else if (selectedValue === 'Josh') {
         loginData = { username: 'Josh', password, companyId };
+    } else if (selectedValue.startsWith('mgr_')) {
+        const username = selectedValue.replace('mgr_', '');
+        loginData = { username, password, companyId };
     } else if (selectedValue.startsWith('emp_')) {
         const employeeId = selectedValue.replace('emp_', '');
         loginData = { employee_id: employeeId, password, companyId };
@@ -741,10 +761,116 @@ function displayEmployeeRecords(records) {
 // Manager Functions
 function loadInitialData() {
     if (currentUser?.role === 'manager' || currentUser?.role === 'super-admin') {
+        loadMyClockState();
         loadEmployees();
         loadEmployeesForPunch();
         loadEmployeesForReport();
     }
+}
+
+function loadMyClockState() {
+    const noLinkEl = document.getElementById('my-clock-no-link');
+    const sectionEl = document.getElementById('my-clock-section');
+    if (!noLinkEl || !sectionEl) return;
+    if (!currentUser?.employee_id) {
+        noLinkEl.classList.remove('hidden');
+        sectionEl.classList.add('hidden');
+        return;
+    }
+    noLinkEl.classList.add('hidden');
+    sectionEl.classList.remove('hidden');
+    loadMyClockPunches();
+}
+
+function loadMyClockPunches() {
+    if (!currentUser?.employee_id) return;
+    const url = `${API_BASE}/punches?employee_id=${encodeURIComponent(currentUser.employee_id)}`;
+    fetch(url, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            const records = Array.isArray(data) ? data : [];
+            displayMyClockRecords(records);
+            updateMyClockButtonStates(records);
+        })
+        .catch(() => {
+            document.getElementById('my-clock-records').innerHTML = '<p>Could not load records.</p>';
+            updateMyClockButtonStates([]);
+        });
+}
+
+function updateMyClockButtonStates(records) {
+    const clockInBtn = document.getElementById('my-clock-in-btn');
+    const clockOutBtn = document.getElementById('my-clock-out-btn');
+    const lunchInBtn = document.getElementById('my-lunch-in-btn');
+    const lunchOutBtn = document.getElementById('my-lunch-out-btn');
+    if (!clockInBtn || !clockOutBtn || !lunchInBtn || !lunchOutBtn) return;
+    function getLocalDateString(date) {
+        const d = date instanceof Date ? date : new Date(date);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+    const todayStr = getLocalDateString(new Date());
+    function setState(btn, disabled) {
+        btn.disabled = !!disabled;
+        btn.style.opacity = disabled ? '0.5' : '1';
+        btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    }
+    if (!records || records.length === 0) {
+        setState(clockInBtn, false);
+        setState(clockOutBtn, true);
+        setState(lunchInBtn, true);
+        setState(lunchOutBtn, true);
+        return;
+    }
+    const todayRecords = records.filter(r => getLocalDateString(r.punch_time) === todayStr);
+    const hasClockIn = todayRecords.some(r => r.punch_type === 'clock_in');
+    const hasClockOut = todayRecords.some(r => r.punch_type === 'clock_out');
+    const hasLunchIn = todayRecords.some(r => r.punch_type === 'lunch_in');
+    const hasLunchOut = todayRecords.some(r => r.punch_type === 'lunch_out');
+    setState(clockInBtn, hasClockIn);
+    setState(clockOutBtn, hasClockOut || !hasClockIn);
+    setState(lunchInBtn, hasLunchOut || !hasClockIn);
+    setState(lunchOutBtn, hasLunchIn || !hasLunchOut);
+}
+
+function displayMyClockRecords(records) {
+    const container = document.getElementById('my-clock-records');
+    if (!container) return;
+    if (!records || records.length === 0) {
+        container.innerHTML = '<p>No punches yet.</p>';
+        return;
+    }
+    const slice = records.slice(0, 30);
+    const html = slice.map(record => {
+        const date = new Date(record.punch_time);
+        const typeClass = record.punch_type.replace('_', '-');
+        return `<div class="record-item" style="margin-bottom: 6px;"><span class="record-type ${typeClass}">${formatPunchType(record.punch_type)}</span> <span style="margin-left: 10px;">${formatDateTime(date)}</span></div>`;
+    }).join('');
+    container.innerHTML = html;
+}
+
+function handleManagerPunch(punchType) {
+    const noteEl = document.getElementById('my-clock-note');
+    const notes = noteEl ? noteEl.value.trim() : '';
+    fetch(`${API_BASE}/punch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ punch_type: punchType, notes: notes || null }),
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showMessage('Punch recorded.', 'success');
+                if (noteEl) noteEl.value = '';
+                loadMyClockPunches();
+            } else {
+                showMessage(data.error || 'Failed to record punch', 'error');
+            }
+        })
+        .catch(() => showMessage('Error recording punch', 'error'));
 }
 
 function loadEmployees(status = 'active') {
@@ -800,18 +926,41 @@ function updateEmployeeManagementDetails() {
         ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Active</span>'
         : '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Inactive</span>';
 
+    const hasManager = emp.has_manager === true || emp.has_manager === '1';
+    const empIdEsc = String(emp.id).replace(/'/g, "\\'");
+    const managerSection = hasManager
+        ? `<div class="manager-rights-section" style="margin-top: 14px; padding: 12px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #667eea;">
+            <strong>Has manager rights.</strong> They log in with their name and password and see the manager dashboard.
+            <div style="margin-top: 8px;">
+                <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRights('${empIdEsc}')">Revoke manager rights</button>
+            </div>
+        </div>`
+        : `<div class="manager-rights-section" style="margin-top: 14px;">
+            <button type="button" class="btn btn-primary" onclick="openGrantManagerModal('${empIdEsc}')">Grant manager rights</button>
+            <small style="display: block; margin-top: 6px; color: #666;">They will keep the same login (name + password) and see the manager dashboard.</small>
+        </div>`;
+
     detailsContainer.innerHTML = `
         <div class="employee-card">
             <div class="employee-info">
-                <h4>${emp.name}${statusBadge}</h4>
-                <p>Employee #: ${emp.employee_number}${emp.email ? ` | Email: ${emp.email}` : ''}${emp.phone ? ` | Phone: ${emp.phone}` : ''}</p>
+                <h4>${escapeHtml(emp.name)}${statusBadge}</h4>
+                <p>Employee #: ${escapeHtml(emp.employee_number)}${emp.email ? ` | Email: ${escapeHtml(emp.email)}` : ''}${emp.phone ? ` | Phone: ${escapeHtml(emp.phone)}` : ''}</p>
             </div>
             <div style="display: flex; gap: 10px;">
                 <button class="btn btn-primary" onclick="editEmployee('${String(emp.id)}')">Edit</button>
                 <button class="btn btn-danger" onclick="removeEmployee('${String(emp.id)}')">Remove</button>
             </div>
+            ${managerSection}
         </div>
     `;
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    const str = String(s);
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 function loadEmployeesForPunch() {
@@ -1128,6 +1277,64 @@ function removeEmployee(id) {
         })
         .catch(err => {
             showMessage('Error removing employee', 'error');
+        });
+}
+
+function openGrantManagerModal(employeeId) {
+    const emp = employees.find(e => String(e.id) === String(employeeId));
+    if (!emp) return;
+    document.getElementById('grant-manager-employee-id').value = employeeId;
+    document.getElementById('grant-manager-employee-name').textContent = emp.name + ' (# ' + (emp.employee_number || '') + ')';
+    document.getElementById('grant-manager-message').textContent = '';
+    document.getElementById('grant-manager-modal').classList.remove('hidden');
+}
+
+function revokeManagerRights(employeeId) {
+    const emp = employees.find(e => String(e.id) === String(employeeId));
+    if (!emp || !confirm('Revoke manager rights for ' + (emp.name || 'this employee') + '? They will no longer be able to log in with their manager username.')) return;
+    fetch(`${API_BASE}/employees/${employeeId}/revoke-manager`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showMessage(data.message || 'Manager rights revoked.', 'success');
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter);
+            } else {
+                showMessage(data.error || 'Failed to revoke', 'error');
+            }
+        })
+        .catch(() => showMessage('Error revoking manager rights', 'error'));
+}
+
+function handleConfirmGrantManager() {
+    const id = document.getElementById('grant-manager-employee-id')?.value?.trim();
+    const msgEl = document.getElementById('grant-manager-message');
+    if (!id) return;
+    msgEl.textContent = 'Saving...';
+    msgEl.style.color = '#666';
+    fetch(`${API_BASE}/employees/${id}/grant-manager`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        credentials: 'include'
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                msgEl.textContent = data.message || 'Manager rights granted.';
+                msgEl.style.color = 'green';
+                document.getElementById('grant-manager-modal').classList.add('hidden');
+                showMessage(data.message || 'Manager rights granted.', 'success');
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter);
+            } else {
+                msgEl.textContent = data.error || 'Failed.';
+                msgEl.style.color = 'red';
+            }
+        })
+        .catch(() => {
+            msgEl.textContent = 'Request failed.';
+            msgEl.style.color = 'red';
         });
 }
 
@@ -1567,6 +1774,10 @@ function switchTab(tabName) {
     });
     tabContent.classList.add('active');
     
+    // Load My Clock when switching to that tab
+    if (tabName === 'my-clock') {
+        loadMyClockState();
+    }
     // Load company settings when switching to that tab
     if (tabName === 'company-settings' && (currentUser?.role === 'manager' || currentUser?.role === 'super-admin')) {
         loadCompanySettings();
@@ -1644,6 +1855,7 @@ function loadManagerProfile() {
                 document.getElementById('profile-default-email-body').value = data.defaultEmailBody || '';
                 msgEl.textContent = '';
                 if (emailMsgEl) emailMsgEl.textContent = '';
+                loadProfileLinkEmployeeDropdown(data.employee_id);
             }
         })
         .catch(err => {
@@ -1651,6 +1863,25 @@ function loadManagerProfile() {
             msgEl.textContent = err.message || 'Could not load profile.';
             msgEl.style.color = 'red';
         });
+}
+
+function loadProfileLinkEmployeeDropdown(selectedEmployeeId) {
+    const sel = document.getElementById('profile-link-employee');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— None —</option>';
+    fetch(`${API_BASE}/employees`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            const list = Array.isArray(data) ? data : [];
+            list.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.id || emp._id;
+                opt.textContent = (emp.name || 'Employee') + (emp.employee_number ? ' (# ' + emp.employee_number + ')' : '');
+                sel.appendChild(opt);
+            });
+            if (selectedEmployeeId) sel.value = selectedEmployeeId;
+        })
+        .catch(() => {});
 }
 
 function handleSendTestEmail() {
@@ -1725,6 +1956,8 @@ function handleManagerProfileSubmit(e) {
     body.defaultEmailBody = document.getElementById('profile-default-email-body')?.value?.trim() || '';
     const smtpPassword = document.getElementById('profile-smtp-password')?.value?.trim();
     if (smtpPassword) body.smtpPassword = smtpPassword;
+    const linkEmployeeId = document.getElementById('profile-link-employee')?.value?.trim() || '';
+    body.link_employee_id = linkEmployeeId || null;
 
     fetch(`${API_BASE}/profile`, {
         method: 'PUT',
@@ -1751,11 +1984,12 @@ function handleManagerProfileSubmit(e) {
                     currentUser.name = name || null;
                     currentUser.email = email || null;
                     currentUser.ext = ext || null;
+                    if (data.employee_id !== undefined) currentUser.employee_id = data.employee_id || null;
                 }
                 document.getElementById('profile-new-password').value = '';
                 document.getElementById('profile-confirm-password').value = '';
-                document.getElementById('profile-smtp-password').value = data.smtpPassword || '';
                 loadManagerProfile();
+                loadMyClockState();
             } else {
                 msgEl.textContent = data.error || 'Failed to update profile.';
                 msgEl.style.color = 'red';

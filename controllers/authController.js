@@ -40,7 +40,7 @@ async function login(req, res) {
       employeeName = emp.name;
       employeeId = String(emp._id);
 
-      user = await User.findOne({ companyId, employeeId: emp._id, role: 'employee' }).lean();
+      user = await User.findOne({ companyId, employeeId: emp._id, role: { $in: ['employee', 'manager'] } }).lean();
       if (!user) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
     } else if (username) {
       // Manager or super-admin login via username
@@ -114,7 +114,7 @@ async function getProfile(req, res) {
   if (!uid) return res.status(401).json({ error: 'Not logged in' });
   try {
     const user = await User.findOne({ _id: uid, companyId: req.session.user.companyId })
-      .select('username name email ext role displayName smtpHost smtpPort smtpSecure smtpUser smtpPassEncrypted defaultEmailBody')
+      .select('username name email ext role employeeId displayName smtpHost smtpPort smtpSecure smtpUser smtpPassEncrypted defaultEmailBody')
       .lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
     let smtpPassword = '';
@@ -132,6 +132,7 @@ async function getProfile(req, res) {
       email: user.email || '',
       ext: user.ext || '',
       role: user.role,
+      employee_id: user.employeeId ? String(user.employeeId) : null,
       displayName: user.displayName || '',
       smtpHost: user.smtpHost || '',
       smtpPort: user.smtpPort ?? '',
@@ -154,10 +155,22 @@ async function updateProfile(req, res) {
   const {
     name, email, ext, newPassword,
     displayName, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPassword, defaultEmailBody,
+    link_employee_id,
   } = req.body || {};
   try {
     const user = await User.findOne({ _id: uid, companyId: req.session.user.companyId });
     if (!user) return res.status(404).json({ error: 'User not found' });
+    // Managers/super-admins can link to an employee (for My Clock tab)
+    if ((user.role === 'manager' || user.role === 'super-admin') && link_employee_id !== undefined) {
+      const Employee = require('../models/Employee');
+      if (link_employee_id === '' || link_employee_id == null) {
+        user.employeeId = undefined;
+      } else {
+        const emp = await Employee.findOne({ _id: link_employee_id, companyId: req.session.user.companyId }).lean();
+        if (!emp) return res.status(400).json({ error: 'Employee not found' });
+        user.employeeId = emp._id;
+      }
+    }
     if (name !== undefined) user.name = String(name).trim() || null;
     if (email !== undefined) user.email = String(email).trim().toLowerCase() || null;
     if (ext !== undefined) user.ext = String(ext).trim() || null;
@@ -181,8 +194,15 @@ async function updateProfile(req, res) {
     user.markModified('smtpPassEncrypted');
     user.markModified('defaultEmailBody');
     await user.save();
-    req.session.user = { ...req.session.user, name: user.name, email: user.email, ext: user.ext };
-    return res.json({ success: true, message: 'Profile updated.' });
+    const sessionUser = { ...req.session.user, name: user.name, email: user.email, ext: user.ext };
+    if (user.employeeId) sessionUser.employee_id = String(user.employeeId);
+    else sessionUser.employee_id = null;
+    req.session.user = sessionUser;
+    return res.json({
+      success: true,
+      message: 'Profile updated.',
+      employee_id: sessionUser.employee_id || null,
+    });
   } catch (err) {
     console.error('updateProfile error:', err);
     return res.status(500).json({ error: err.message || 'Server error' });
@@ -256,15 +276,38 @@ async function testEmail(req, res) {
   }
 }
 
-// GET /api/login-options — public; returns super-admin login option if env is set
+// GET /api/login-options — public; returns super-admin and company managers for login dropdown
+// Query: companyId (optional) — when set, returns managers for that company (username + name)
 function getLoginOptions(req, res) {
   res.setHeader('Content-Type', 'application/json');
-  const companyId = String(process.env.SUPER_ADMIN_COMPANY_ID || '').trim();
-  const username = String(process.env.SUPER_ADMIN_USERNAME || '').trim();
-  if (!companyId || !username) {
-    return res.json({ superAdmin: null });
+  const superCompanyId = String(process.env.SUPER_ADMIN_COMPANY_ID || '').trim();
+  const superUsername = String(process.env.SUPER_ADMIN_USERNAME || '').trim();
+  const companyId = String(req.query.companyId || '').trim();
+
+  const out = { superAdmin: superCompanyId && superUsername ? { companyId: superCompanyId, username: superUsername } : null };
+
+  // Only return standalone managers (no employeeId) for dropdown; granted managers log in as employee (name + password)
+  if (companyId) {
+    User.find({ companyId, role: 'manager', employeeId: null })
+      .select('username name')
+      .lean()
+      .then((users) => {
+        out.managers = (users || []).map((u) => ({
+          username: u.username,
+          name: u.name || u.username,
+        }));
+        return res.json(out);
+      })
+      .catch((err) => {
+        console.error('getLoginOptions managers:', err);
+        out.managers = [];
+        return res.json(out);
+      });
+    return;
   }
-  return res.json({ superAdmin: { companyId, username } });
+
+  out.managers = [];
+  return res.json(out);
 }
 
 module.exports = { login, logout, me, getProfile, updateProfile, testEmail, getLoginOptions };
