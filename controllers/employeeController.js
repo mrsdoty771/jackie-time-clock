@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
 const { encrypt, decrypt } = require('../utils/encrypt');
@@ -320,14 +321,28 @@ async function grantManager(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { id } = req.params;
+  let id = (req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Employee ID is required' });
 
   try {
-    const employee = await Employee.findOne({ _id: id, companyId }).lean();
-    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid employee ID. Please select an employee from the list and try again.' });
+    }
+    const employeeId = new mongoose.Types.ObjectId(id);
+    const employee = await Employee.findOne({ _id: employeeId, companyId }).lean();
+    if (!employee) {
+      return res.status(404).json({
+        error: 'Employee not found. Make sure you selected an employee from the list and that they belong to your company.',
+      });
+    }
 
-    const user = await User.findOne({ companyId, employeeId: employee._id, role: 'employee' });
-    if (!user) return res.status(404).json({ error: 'Employee user account not found' });
+    const user = await User.findOne({ companyId, employeeId: employeeId, role: { $in: ['employee', 'manager'] } });
+    if (!user) {
+      console.warn('grantManager: no User for employee', id, companyId);
+      return res.status(400).json({
+        error: 'This employee does not have a login account. They may have been added before login was set up. Use Edit Employee to set a password for them first, then try Grant manager rights again.',
+      });
+    }
 
     if (user.role === 'manager') {
       return res.status(400).json({ error: 'This employee already has manager rights.' });
@@ -339,7 +354,7 @@ async function grantManager(req, res) {
     return res.json({ success: true, message: 'Manager rights granted. They will keep logging in with their name and password and will see the manager dashboard.' });
   } catch (err) {
     console.error('grantManager error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    return res.status(500).json({ error: 'Database error. Check the server terminal for details.' });
   }
 }
 
@@ -348,22 +363,33 @@ async function revokeManager(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { id } = req.params;
+  let id = (req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Employee ID is required' });
 
   try {
-    const employee = await Employee.findOne({ _id: id, companyId }).lean();
-    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid employee ID. Please select an employee from the list and try again.' });
+    }
+    const employeeId = new mongoose.Types.ObjectId(id);
+    const employee = await Employee.findOne({ _id: employeeId, companyId }).lean();
+    if (!employee) {
+      return res.status(404).json({
+        error: 'Employee not found. Make sure you selected an employee from the list.',
+      });
+    }
 
     const result = await User.updateOne(
-      { companyId, employeeId: employee._id, role: 'manager' },
+      { companyId, employeeId: employeeId, role: 'manager' },
       { $set: { role: 'employee' } }
     );
-    if (!result.matchedCount) return res.status(404).json({ error: 'This employee does not have manager rights' });
+    if (!result.matchedCount) {
+      return res.status(404).json({ error: 'This employee does not have manager rights.' });
+    }
 
     return res.json({ success: true, message: 'Manager rights revoked. They will keep the same login and see the employee time clock.' });
   } catch (err) {
     console.error('revokeManager error:', err);
-    return res.status(500).json({ error: 'Database error' });
+    return res.status(500).json({ error: 'Database error. Check the server terminal for details.' });
   }
 }
 

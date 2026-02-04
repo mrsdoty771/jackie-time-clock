@@ -4,45 +4,34 @@ const User = require('../models/User');
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const { decrypt } = require('../utils/encrypt');
-
-function parseDateOnly(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(String(dateStr) + 'T00:00:00');
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function dateKeyLocal(date) {
-  const d = new Date(date);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+const { getCompanyTimezone, getUtcRangeForLocalDate, getLocalDateStringInTz, formatDateTimeInTz } = require('../utils/timezone');
 
 function formatPunchType(type) {
   return String(type || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-function formatDateTime(date) {
-  return new Date(date).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
+/** Format a date string (YYYY-MM-DD) for display. */
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  return new Date(String(dateStr).trim().slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
   });
 }
 
-function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-}
+/** Shared: build report data array for weekly and email. startDateStr/endDateStr are YYYY-MM-DD in company TZ. */
+async function getReportData(companyId, user, startDateStr, endDateStr, employeeId, timezone) {
+  const tz = timezone || 'UTC';
+  const { startUtc } = getUtcRangeForLocalDate(startDateStr, tz);
+  const { endUtc } = getUtcRangeForLocalDate(endDateStr, tz);
 
-/** Shared: build report data array for weekly and email. */
-async function getReportData(companyId, user, startDate, endDate, employeeId) {
-  const filter = { companyId };
+  const filter = { companyId, punchTime: { $gte: startUtc, $lte: endUtc } };
   if (user.role === 'employee') {
     filter.employeeId = user.employee_id;
   } else if (employeeId) {
     filter.employeeId = employeeId;
   }
-  const endInclusive = new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1);
-  filter.punchTime = { $gte: startDate, $lte: endInclusive };
 
   const punches = await Punch.find(filter).sort({ employeeId: 1, punchTime: 1 }).lean();
   const employeeIds = Array.from(new Set(punches.map((p) => String(p.employeeId))));
@@ -57,7 +46,7 @@ async function getReportData(companyId, user, startDate, endDate, employeeId) {
     const emp = empMap.get(empId);
     const empName = emp?.name || p.employeeName || 'Employee';
     const empNum = emp?.employeeNumber || null;
-    const dayKey = dateKeyLocal(p.punchTime);
+    const dayKey = getLocalDateStringInTz(p.punchTime, tz);
     if (!employeeMap[empId]) {
       employeeMap[empId] = {
         employee_id: empId,
@@ -92,8 +81,9 @@ async function getReportData(companyId, user, startDate, endDate, employeeId) {
       });
       let effectiveClockOut = clockOut;
       if (clockIn && !clockOut) {
-        const dayEnd = new Date(day.date + 'T23:59:59.999');
-        effectiveClockOut = dayEnd > new Date() ? new Date() : dayEnd;
+        const { endUtc: dayEndUtc } = getUtcRangeForLocalDate(day.date, tz);
+        const now = new Date();
+        effectiveClockOut = dayEndUtc > now ? now : dayEndUtc;
       }
       let hours = 0;
       if (clockIn && effectiveClockOut) {
@@ -112,8 +102,9 @@ async function getReportData(companyId, user, startDate, endDate, employeeId) {
   return Object.values(employeeMap);
 }
 
-/** Build PDF buffer from report data. */
-function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel) {
+/** Build PDF buffer from report data. timezone used for formatting punch times. */
+function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, timezone) {
+  const tz = timezone || 'UTC';
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
     const buffers = [];
@@ -137,7 +128,7 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel) {
         doc.fontSize(10).text(`${formatDate(day.date)} - ${day.hours} hours`);
         day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
         day.punches.forEach((p) => {
-          doc.fontSize(9).text(`  ${formatPunchType(p.type)}: ${formatDateTime(p.time)}${p.notes ? ` (${p.notes})` : ''}`, { indent: 15 });
+          doc.fontSize(9).text(`  ${formatPunchType(p.type)}: ${formatDateTimeInTz(p.time, tz)}${p.notes ? ` (${p.notes})` : ''}`, { indent: 15 });
         });
         doc.moveDown(0.3);
       });
@@ -149,20 +140,22 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel) {
 }
 
 // GET /api/reports/weekly?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&employee_id?
+// start_date and end_date are interpreted in company timezone.
 async function weekly(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const companyId = req.companyId;
   const user = req.session.user;
-  const startDate = parseDateOnly(req.query.start_date);
-  const endDate = parseDateOnly(req.query.end_date);
-  if (!startDate || !endDate) {
-    return res.status(400).json({ error: 'start_date and end_date are required' });
+  const startDateStr = String(req.query.start_date || '').trim().slice(0, 10);
+  const endDateStr = String(req.query.end_date || '').trim().slice(0, 10);
+  if (!startDateStr || !endDateStr) {
+    return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' });
   }
-  if (startDate > endDate) {
+  if (startDateStr > endDateStr) {
     return res.status(400).json({ error: 'start_date must be before or equal to end_date' });
   }
   try {
-    const data = await getReportData(companyId, user, startDate, endDate, req.query.employee_id || null);
+    const tz = await getCompanyTimezone(companyId);
+    const data = await getReportData(companyId, user, startDateStr, endDateStr, req.query.employee_id || null, tz);
     return res.json(data);
   } catch (err) {
     console.error('weekly report error:', err);
@@ -178,18 +171,19 @@ async function emailReport(req, res) {
   if (!toEmail) {
     return res.status(400).json({ error: 'Recipient email (to) is required' });
   }
-  const startDate = parseDateOnly(start_date);
-  const endDate = parseDateOnly(end_date);
-  if (!startDate || !endDate) {
-    return res.status(400).json({ error: 'start_date and end_date are required' });
+  const startDateStr = String(start_date || '').trim().slice(0, 10);
+  const endDateStr = String(end_date || '').trim().slice(0, 10);
+  if (!startDateStr || !endDateStr) {
+    return res.status(400).json({ error: 'start_date and end_date are required (YYYY-MM-DD)' });
   }
-  if (startDate > endDate) {
+  if (startDateStr > endDateStr) {
     return res.status(400).json({ error: 'start_date must be before or equal to end_date' });
   }
 
   const companyId = req.companyId;
   const sessionUser = req.session.user;
   const employeeId = employee_id || null;
+  const tz = await getCompanyTimezone(companyId);
 
   let transporter;
   let fromEmail;
@@ -233,11 +227,11 @@ async function emailReport(req, res) {
   const user = sessionUser;
 
   try {
-    const reportData = await getReportData(companyId, user, startDate, endDate, employeeId);
-    const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const reportData = await getReportData(companyId, user, startDateStr, endDateStr, employeeId, tz);
+    const startStr = formatDate(startDateStr);
+    const endStr = formatDate(endDateStr);
     const employeeLabel = employeeId ? (reportData[0]?.employee_name || 'Employee') : 'All Employees';
-    const pdfBuffer = await buildReportPdf(reportData, startStr, endStr, employeeLabel);
+    const pdfBuffer = await buildReportPdf(reportData, startStr, endStr, employeeLabel, tz);
 
     const defaultBody = (dbUser && dbUser.defaultEmailBody) || `Please find the time clock report attached (${startStr} to ${endStr}).`;
     await transporter.sendMail({

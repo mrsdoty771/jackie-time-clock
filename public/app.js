@@ -7,6 +7,8 @@ let employees = [];
 let currentWeekStart = null;
 let loginOptions = { superAdmin: null };
 let lastReportData = null;
+/** Company timezone (IANA, e.g. America/New_York). Set after login via loadCompanyTimezone(). */
+let companyTimezone = 'UTC';
 
 // When any API returns 401 (e.g. idle timeout), show login and message
 function handleSessionExpired(message) {
@@ -143,8 +145,19 @@ function loadManagerNavCompanyName() {
         .catch(() => { el.textContent = 'Company'; });
 }
 
+function loadCompanyTimezone() {
+    fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            const tz = (data && data.timezone && String(data.timezone).trim()) ? data.timezone : 'UTC';
+            companyTimezone = tz;
+        })
+        .catch(() => { companyTimezone = 'UTC'; });
+}
+
 function showPage(role) {
     document.getElementById('login-page').classList.add('hidden');
+    loadCompanyTimezone();
     if (role === 'manager' || role === 'super-admin') {
         document.getElementById('manager-page').classList.remove('hidden');
         loadManagerNavCompanyName();
@@ -619,18 +632,9 @@ function updatePunchButtonStates(records) {
     
     if (!clockInBtn || !clockOutBtn || !lunchInBtn || !lunchOutBtn) return;
     
-    // Helper function to get local date string in YYYY-MM-DD format
-    function getLocalDateString(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-    
-    // Get today's date in YYYY-MM-DD format (local time)
-    const today = new Date();
-    const todayStr = getLocalDateString(today);
-    
+    // Get today's date in company timezone (YYYY-MM-DD)
+    const todayStr = getLocalDateStringInTz(new Date(), companyTimezone);
+
     // Helper function to set button state
     function setButtonState(btn, disabled) {
         if (disabled) {
@@ -645,10 +649,9 @@ function updatePunchButtonStates(records) {
     }
     
     if (records && records.length > 0) {
-        // Filter records for today only (using local dates)
+        // Filter records for today only (using company timezone)
         const todayRecords = records.filter(record => {
-            const recordDate = new Date(record.punch_time);
-            const recordDateStr = getLocalDateString(recordDate);
+            const recordDateStr = getLocalDateStringInTz(record.punch_time, companyTimezone);
             return recordDateStr === todayStr;
         });
         
@@ -681,12 +684,10 @@ function displayEmployeeRecords(records) {
         return;
     }
     
-    // Group records by day
+    // Group records by day (in company timezone)
     const recordsByDay = {};
     records.slice(0, 100).forEach(record => {
-        const date = new Date(record.punch_time);
-        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
-        
+        const dateStr = getLocalDateStringInTz(record.punch_time, companyTimezone);
         if (!recordsByDay[dateStr]) {
             recordsByDay[dateStr] = [];
         }
@@ -804,14 +805,7 @@ function updateMyClockButtonStates(records) {
     const lunchInBtn = document.getElementById('my-lunch-in-btn');
     const lunchOutBtn = document.getElementById('my-lunch-out-btn');
     if (!clockInBtn || !clockOutBtn || !lunchInBtn || !lunchOutBtn) return;
-    function getLocalDateString(date) {
-        const d = date instanceof Date ? date : new Date(date);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-    }
-    const todayStr = getLocalDateString(new Date());
+    const todayStr = getLocalDateStringInTz(new Date(), companyTimezone);
     function setState(btn, disabled) {
         btn.disabled = !!disabled;
         btn.style.opacity = disabled ? '0.5' : '1';
@@ -824,7 +818,7 @@ function updateMyClockButtonStates(records) {
         setState(lunchOutBtn, true);
         return;
     }
-    const todayRecords = records.filter(r => getLocalDateString(r.punch_time) === todayStr);
+    const todayRecords = records.filter(r => getLocalDateStringInTz(r.punch_time, companyTimezone) === todayStr);
     const hasClockIn = todayRecords.some(r => r.punch_type === 'clock_in');
     const hasClockOut = todayRecords.some(r => r.punch_type === 'clock_out');
     const hasLunchIn = todayRecords.some(r => r.punch_type === 'lunch_in');
@@ -1291,11 +1285,20 @@ function openGrantManagerModal(employeeId) {
 
 function revokeManagerRights(employeeId) {
     const emp = employees.find(e => String(e.id) === String(employeeId));
-    if (!emp || !confirm('Revoke manager rights for ' + (emp.name || 'this employee') + '? They will no longer be able to log in with their manager username.')) return;
+    if (!emp || !confirm('Revoke manager rights for ' + (emp.name || 'this employee') + '? They will keep the same login but see the employee time clock instead of the manager dashboard.')) return;
     fetch(`${API_BASE}/employees/${employeeId}/revoke-manager`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text && text.trim()) data = JSON.parse(text);
+            } catch (_) {
+                data = { error: res.statusText || ('Server error ' + res.status) };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
                 showMessage(data.message || 'Manager rights revoked.', 'success');
                 const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
                 loadEmployees(currentFilter);
@@ -1303,13 +1306,17 @@ function revokeManagerRights(employeeId) {
                 showMessage(data.error || 'Failed to revoke', 'error');
             }
         })
-        .catch(() => showMessage('Error revoking manager rights', 'error'));
+        .catch((err) => showMessage(err.message || 'Error revoking manager rights', 'error'));
 }
 
 function handleConfirmGrantManager() {
     const id = document.getElementById('grant-manager-employee-id')?.value?.trim();
     const msgEl = document.getElementById('grant-manager-message');
-    if (!id) return;
+    if (!id || id === 'undefined' || id.length < 10) {
+        msgEl.textContent = 'No employee selected. Please select an employee from the list and click Grant manager rights again.';
+        msgEl.style.color = 'red';
+        return;
+    }
     msgEl.textContent = 'Saving...';
     msgEl.style.color = '#666';
     fetch(`${API_BASE}/employees/${id}/grant-manager`, {
@@ -1318,9 +1325,18 @@ function handleConfirmGrantManager() {
         body: JSON.stringify({}),
         credentials: 'include'
     })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text && text.trim()) data = JSON.parse(text);
+            } catch (_) {
+                data = { error: res.statusText || ('Server error ' + res.status) };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
                 msgEl.textContent = data.message || 'Manager rights granted.';
                 msgEl.style.color = 'green';
                 document.getElementById('grant-manager-modal').classList.add('hidden');
@@ -1332,8 +1348,8 @@ function handleConfirmGrantManager() {
                 msgEl.style.color = 'red';
             }
         })
-        .catch(() => {
-            msgEl.textContent = 'Request failed.';
+        .catch((err) => {
+            msgEl.textContent = err.message || 'Request failed. Check network and server.';
             msgEl.style.color = 'red';
         });
 }
@@ -1800,6 +1816,19 @@ function loadCompanySettings() {
         .then(data => {
             const companyNameInput = document.getElementById('company-name');
             if (companyNameInput) companyNameInput.value = data.company_name || 'MVC';
+            const tz = (data.timezone && String(data.timezone).trim()) ? data.timezone : 'UTC';
+            companyTimezone = tz;
+            const tzSelect = document.getElementById('company-timezone');
+            if (tzSelect) {
+                tzSelect.value = tz;
+                if (!tzSelect.querySelector(`option[value="${tz}"]`)) {
+                    const opt = document.createElement('option');
+                    opt.value = tz;
+                    opt.textContent = tz;
+                    tzSelect.appendChild(opt);
+                    tzSelect.value = tz;
+                }
+            }
             const logoData = data.logo_data || '';
             const preview = document.getElementById('company-logo-preview');
             const wrap = document.getElementById('company-logo-preview-wrap');
@@ -2005,6 +2034,7 @@ function handleCompanySettings(e) {
     e.preventDefault();
     const companyName = document.getElementById('company-name').value.trim();
     const logoData = document.getElementById('company-logo-data')?.value?.trim() || '';
+    const timezone = document.getElementById('company-timezone')?.value?.trim() || 'UTC';
     const messageDiv = document.getElementById('company-settings-message');
     if (!companyName) {
         if (messageDiv) messageDiv.innerHTML = '<p style="color: red;">Company name is required</p>';
@@ -2013,12 +2043,13 @@ function handleCompanySettings(e) {
     fetch(`${API_BASE}/company-settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName, logo_data: logoData || null }),
+        body: JSON.stringify({ company_name: companyName, logo_data: logoData || null, timezone }),
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
+                if (data.timezone) companyTimezone = data.timezone;
                 if (messageDiv) messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page and dashboard will update.</p>';
                 updateLoginPageTitle(data.company_name);
                 loadManagerNavCompanyName();
@@ -2129,14 +2160,29 @@ function formatPunchType(type) {
     ).join(' ');
 }
 
-function formatDateTime(date) {
-    return new Date(date).toLocaleString('en-US', {
+/** Get YYYY-MM-DD for a UTC date in the given timezone (or company timezone). */
+function getLocalDateStringInTz(date, tz) {
+    const d = new Date(date);
+    const zone = (tz && String(tz).trim()) || companyTimezone || 'UTC';
+    return d.toLocaleDateString('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+/** Format date+time for display in the given timezone (or company timezone). */
+function formatDateTimeInTz(date, tz) {
+    const d = new Date(date);
+    const zone = (tz && String(tz).trim()) || companyTimezone || 'UTC';
+    return d.toLocaleString('en-US', {
+        timeZone: zone,
         month: 'short',
         day: 'numeric',
         year: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
     });
+}
+
+function formatDateTime(date) {
+    return formatDateTimeInTz(date, companyTimezone);
 }
 
 function formatDate(dateStr) {

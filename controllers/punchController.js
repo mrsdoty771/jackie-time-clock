@@ -1,12 +1,7 @@
 const Punch = require('../models/Punch');
 const Employee = require('../models/Employee');
 const { sendPunchNotification } = require('../utils/sms');
-
-function parseDateOnly(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(String(dateStr) + 'T00:00:00');
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+const { getCompanyTimezone, getUtcRangeForLocalDate } = require('../utils/timezone');
 
 // POST /api/punch
 // Body: { punch_type, notes, employee_id? }
@@ -60,7 +55,7 @@ async function createPunch(req, res) {
 }
 
 // GET /api/punches
-// Query: employee_id?, start_date?, end_date?
+// Query: employee_id?, start_date?, end_date? (dates interpreted in company timezone)
 async function listPunches(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
@@ -77,15 +72,16 @@ async function listPunches(req, res) {
       filter.employeeId = employee_id;
     }
 
-    const start = parseDateOnly(start_date);
-    const end = parseDateOnly(end_date);
-    if (start || end) {
+    const tz = await getCompanyTimezone(companyId);
+    if (start_date || end_date) {
       filter.punchTime = {};
-      if (start) filter.punchTime.$gte = start;
-      if (end) {
-        // inclusive end-date
-        const endInclusive = new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1);
-        filter.punchTime.$lte = endInclusive;
+      if (start_date) {
+        const { startUtc } = getUtcRangeForLocalDate(String(start_date).trim().slice(0, 10), tz);
+        filter.punchTime.$gte = startUtc;
+      }
+      if (end_date) {
+        const { endUtc } = getUtcRangeForLocalDate(String(end_date).trim().slice(0, 10), tz);
+        filter.punchTime.$lte = endUtc;
       }
     }
 

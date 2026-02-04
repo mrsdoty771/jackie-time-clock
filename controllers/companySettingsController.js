@@ -16,10 +16,11 @@ async function getCompanySettings(req, res) {
 
   try {
     const settings = await CompanySettings.findOne({ companyId }).lean();
-    if (!settings) return res.json({ company_name: 'MVC', logo_data: null });
+    if (!settings) return res.json({ company_name: 'MVC', logo_data: null, timezone: 'UTC' });
     return res.json({
       company_name: settings.companyName || 'MVC',
       logo_data: settings.logoData || null,
+      timezone: settings.timezone && String(settings.timezone).trim() ? String(settings.timezone).trim() : 'UTC',
     });
   } catch (err) {
     console.error('getCompanySettings error:', err);
@@ -32,7 +33,7 @@ async function updateCompanySettings(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { company_name, logo_data } = req.body;
+  const { company_name, logo_data, timezone } = req.body;
   if (!company_name || String(company_name).trim().length === 0) {
     return res.status(400).json({ error: 'Company name is required' });
   }
@@ -41,6 +42,10 @@ async function updateCompanySettings(req, res) {
     const update = { companyName: String(company_name).trim() };
     if (logo_data !== undefined) {
       update.logoData = logo_data && String(logo_data).trim().length > 0 ? String(logo_data).trim() : null;
+    }
+    if (timezone !== undefined) {
+      const tz = String(timezone || '').trim();
+      update.timezone = tz.length > 0 ? tz : 'UTC';
     }
     const updated = await CompanySettings.findOneAndUpdate(
       { companyId },
@@ -52,6 +57,7 @@ async function updateCompanySettings(req, res) {
       success: true,
       company_name: updated.companyName,
       logo_data: updated.logoData || null,
+      timezone: updated.timezone && String(updated.timezone).trim() ? String(updated.timezone).trim() : 'UTC',
     });
   } catch (err) {
     console.error('updateCompanySettings error:', err);
