@@ -26,7 +26,7 @@
 
 ### Critical missing pieces (for a solid time clock)
 
-1. **Timezone handling** – Punch times are stored as `Date` (server time). There is no stored timezone per company/employee, so “today” and report boundaries can be wrong for remote or multi-location teams. Consider storing timezone (e.g. company or employee) and using it for day boundaries and display.
+1. ~~**Timezone handling**~~ – **Done.** Company timezone in CompanySettings; used for "today", report boundaries, and display.
 2. **Explicit production hardening** – README suggests but does not implement: persistent session store (e.g. `connect-mongo`), stronger SESSION_SECRET guidance, and HTTPS. Important before going live.
 3. **Data backup / export** – No built-in backup or “export all my data” (e.g. punches to CSV). Relying on DB backups only; admins may want self-serve export.
 4. **Audit trail** – No log of who edited/deleted a punch or when. Helpful for compliance and disputes.
@@ -65,6 +65,7 @@
 - [x] Twilio SMS on punch (optional)
 - [x] Default manager user creation from env on startup
 - [x] Company status check (Suspended blocks API)
+- [x] Timezone handling (company timezone in CompanySettings; "today", report ranges, display)
 
 ---
 
@@ -72,9 +73,9 @@
 
 ### High priority (functional / production-ready)
 
-1. **Timezone**
-   - Add timezone (e.g. company or employee) to config.
-   - Use it for “today” and report date boundaries and for display (e.g. `toLocaleString` with that timezone).
+**Recommended next for production-ready:** **Production checklist** (#2) — persistent session store and HTTPS prevent logouts on restart and secure credentials in production.
+
+1. ~~**Timezone**~~ – Done.
 
 2. **Production checklist**
    - Use a strong `SESSION_SECRET` (and document in README).
