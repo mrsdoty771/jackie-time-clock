@@ -399,6 +399,20 @@ function setupEventListeners() {
     // Employee Management dropdown: show selected employee details
     document.getElementById('employee-management-select')?.addEventListener('change', updateEmployeeManagementDetails);
 
+    // Role toggle: use delegation so it works for dynamically rendered employee cards
+    document.getElementById('employee-management-details')?.addEventListener('click', function (e) {
+        const seg = e.target.closest('.role-segmented');
+        if (!seg) return;
+        const btn = e.target.closest('.role-seg-opt');
+        if (!btn || btn.disabled) return;
+        if (btn.classList.contains('active')) return; // already selected, no-op
+        const employeeId = seg.getAttribute('data-employee-id');
+        if (!employeeId) return;
+        const role = btn.getAttribute('data-role');
+        const isManager = role === 'manager';
+        setEmployeeRoleFromCard(employeeId, isManager, seg);
+    });
+
     // Email Report modal
     document.getElementById('email-report-form')?.addEventListener('submit', handleEmailReportSubmit);
     document.getElementById('cancel-email-report-btn')?.addEventListener('click', closeEmailReportModal);
@@ -869,13 +883,14 @@ function handleManagerPunch(punchType) {
 
 function loadEmployees(status = 'active') {
     const url = status ? `${API_BASE}/employees?status=${status}` : `${API_BASE}/employees`;
-    fetch(url, {
+    return fetch(url, {
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
             employees = data;
             displayEmployees(data);
+            return data;
         })
         .catch(err => {
             console.error('Error loading employees:', err);
@@ -887,6 +902,7 @@ function displayEmployees(employeesList) {
     const detailsContainer = document.getElementById('employee-management-details');
     if (!select || !detailsContainer) return;
 
+    const previousValue = select.value;
     const optionsHtml = '<option value="">-- Select an employee --</option>' +
         employeesList.map(emp => `<option value="${String(emp.id)}">${emp.name} (${emp.employee_number})</option>`).join('');
     select.innerHTML = employeesList.length === 0 ? '<option value="">-- Select an employee --</option>' : optionsHtml;
@@ -896,6 +912,9 @@ function displayEmployees(employeesList) {
         return;
     }
 
+    if (previousValue && employeesList.some(emp => String(emp.id) === previousValue)) {
+        select.value = previousValue;
+    }
     updateEmployeeManagementDetails();
 }
 
@@ -921,30 +940,25 @@ function updateEmployeeManagementDetails() {
         : '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Inactive</span>';
 
     const hasManager = emp.has_manager === true || emp.has_manager === '1';
-    const empIdEsc = String(emp.id).replace(/'/g, "\\'");
-    const managerSection = hasManager
-        ? `<div class="manager-rights-section" style="margin-top: 14px; padding: 12px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #667eea;">
-            <strong>Has manager rights.</strong> They log in with their name and password and see the manager dashboard.
-            <div style="margin-top: 8px;">
-                <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRights('${empIdEsc}')">Revoke manager rights</button>
-            </div>
-        </div>`
-        : `<div class="manager-rights-section" style="margin-top: 14px;">
-            <button type="button" class="btn btn-primary" onclick="openGrantManagerModal('${empIdEsc}')">Grant manager rights</button>
-            <small style="display: block; margin-top: 6px; color: #666;">They will keep the same login (name + password) and see the manager dashboard.</small>
-        </div>`;
+    const empId = String(emp.id);
+    const empIdEsc = empId.replace(/'/g, "\\'");
+    const roleSegId = 'role-seg-' + empId.replace(/[^a-zA-Z0-9-]/g, '_');
+    const roleSegment = `
+        <span class="role-segmented" id="${roleSegId}" data-employee-id="${escapeHtml(empId)}">
+            <button type="button" class="role-seg-opt ${!hasManager ? 'active' : ''}" data-role="employee" aria-pressed="${!hasManager}">Employee</button>
+            <button type="button" class="role-seg-opt ${hasManager ? 'active' : ''}" data-role="manager" aria-pressed="${hasManager}">Manager</button>
+        </span>`;
 
     detailsContainer.innerHTML = `
         <div class="employee-card">
             <div class="employee-info">
-                <h4>${escapeHtml(emp.name)}${statusBadge}</h4>
+                <h4>${escapeHtml(emp.name)}${statusBadge}${roleSegment}</h4>
                 <p>Employee #: ${escapeHtml(emp.employee_number)}${emp.email ? ` | Email: ${escapeHtml(emp.email)}` : ''}${emp.phone ? ` | Phone: ${escapeHtml(emp.phone)}` : ''}</p>
             </div>
             <div style="display: flex; gap: 10px;">
-                <button class="btn btn-primary" onclick="editEmployee('${String(emp.id)}')">Edit</button>
-                <button class="btn btn-danger" onclick="removeEmployee('${String(emp.id)}')">Remove</button>
+                <button class="btn btn-primary" onclick="editEmployee('${empIdEsc}')">Edit</button>
+                <button class="btn btn-danger" onclick="removeEmployee('${empIdEsc}')">Remove</button>
             </div>
-            ${managerSection}
         </div>
     `;
 }
@@ -1184,6 +1198,27 @@ function populateEditForm(employee) {
         if (hideIcon) hideIcon.style.display = 'none';
     }
     document.getElementById('edit-emp-status').value = (employee.active === 1 || employee.active === '1') ? '1' : '0';
+    const hasManager = employee.has_manager === true || employee.has_manager === '1';
+    const managerSectionEl = document.getElementById('edit-employee-manager-section');
+    if (managerSectionEl) {
+        const empId = String(employee.id || employee._id || '');
+        const empIdEsc = empId.replace(/'/g, "\\'");
+        if (hasManager) {
+            managerSectionEl.innerHTML = `
+                <div class="manager-rights-section" style="padding: 12px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #667eea;">
+                    <strong>Has manager rights.</strong> They log in with their name and password and see the manager dashboard.
+                    <div style="margin-top: 8px;">
+                        <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRightsFromEditModal('${empIdEsc}')">Revoke manager rights</button>
+                    </div>
+                </div>`;
+        } else {
+            managerSectionEl.innerHTML = `
+                <div class="manager-rights-section">
+                    <button type="button" class="btn btn-primary" onclick="openGrantManagerModalFromEditModal('${empIdEsc}')">Grant manager rights</button>
+                    <small style="display: block; margin-top: 6px; color: #666;">They will keep the same login (name + password) and see the manager dashboard.</small>
+                </div>`;
+        }
+    }
     document.getElementById('edit-employee-modal').classList.remove('hidden');
 }
 
@@ -1274,6 +1309,51 @@ function removeEmployee(id) {
         });
 }
 
+function setEmployeeRoleFromCard(employeeId, isManager, segContainerEl) {
+    if (!employeeId || !segContainerEl) {
+        showMessage('Cannot update role: missing employee.', 'error');
+        return;
+    }
+    const opts = segContainerEl.querySelectorAll('.role-seg-opt');
+    opts.forEach((b) => { b.disabled = true; });
+    const endpoint = isManager ? 'grant-manager' : 'revoke-manager';
+    const url = `${API_BASE}/employees/${encodeURIComponent(employeeId)}/${endpoint}`;
+    fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text && text.trim()) data = JSON.parse(text);
+            } catch (_) {
+                data = { error: res.statusText || ('Server error ' + res.status) };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                showMessage(data.message || (isManager ? 'Manager rights granted.' : 'Manager rights revoked.'), 'success');
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter).then(() => {
+                    const select = document.getElementById('employee-management-select');
+                    if (select) select.value = employeeId;
+                    updateEmployeeManagementDetails();
+                });
+            } else {
+                showMessage(data.error || 'Failed to update role', 'error');
+                opts.forEach((b) => { b.disabled = false; });
+            }
+        })
+        .catch((err) => {
+            showMessage(err.message || 'Error updating role', 'error');
+            opts.forEach((b) => { b.disabled = false; });
+        });
+}
+
 function openGrantManagerModal(employeeId) {
     const emp = employees.find(e => String(e.id) === String(employeeId));
     if (!emp) return;
@@ -1281,6 +1361,46 @@ function openGrantManagerModal(employeeId) {
     document.getElementById('grant-manager-employee-name').textContent = emp.name + ' (# ' + (emp.employee_number || '') + ')';
     document.getElementById('grant-manager-message').textContent = '';
     document.getElementById('grant-manager-modal').classList.remove('hidden');
+}
+
+function openGrantManagerModalFromEditModal(employeeId) {
+    const nameEl = document.getElementById('edit-emp-name');
+    const numberEl = document.getElementById('edit-emp-number');
+    const name = (nameEl && nameEl.value) ? nameEl.value.trim() : 'Employee';
+    const num = (numberEl && numberEl.value) ? numberEl.value.trim() : '';
+    document.getElementById('grant-manager-employee-id').value = employeeId;
+    document.getElementById('grant-manager-employee-name').textContent = name + (num ? ' (# ' + num + ')' : '');
+    document.getElementById('grant-manager-message').textContent = '';
+    document.getElementById('grant-manager-modal').classList.remove('hidden');
+}
+
+function revokeManagerRightsFromEditModal(employeeId) {
+    const nameEl = document.getElementById('edit-emp-name');
+    const name = (nameEl && nameEl.value) ? nameEl.value.trim() : 'this employee';
+    if (!confirm('Revoke manager rights for ' + name + '? They will keep the same login but see the employee time clock instead of the manager dashboard.')) return;
+    fetch(`${API_BASE}/employees/${employeeId}/revoke-manager`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text && text.trim()) data = JSON.parse(text);
+            } catch (_) {
+                data = { error: res.statusText || ('Server error ' + res.status) };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                showMessage(data.message || 'Manager rights revoked.', 'success');
+                document.getElementById('edit-employee-modal').classList.add('hidden');
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter);
+                updateEmployeeManagementDetails();
+            } else {
+                showMessage(data.error || 'Failed to revoke', 'error');
+            }
+        })
+        .catch((err) => showMessage(err.message || 'Error revoking manager rights', 'error'));
 }
 
 function revokeManagerRights(employeeId) {
@@ -2283,11 +2403,13 @@ window.closeLunchModal = closeLunchModal;
 window.closeWelcomeBackModal = closeWelcomeBackModal;
 window.closeClockOutModal = closeClockOutModal;
 
-// Make removeEmployee and editEmployee available globally
+// Make employee/punch actions available globally (for inline onclick from cards/modals)
 window.removeEmployee = removeEmployee;
 window.editEmployee = editEmployee;
-window.editPunch = editPunch;
-window.deletePunch = deletePunch;
+window.openGrantManagerModal = openGrantManagerModal;
+window.openGrantManagerModalFromEditModal = openGrantManagerModalFromEditModal;
+window.revokeManagerRights = revokeManagerRights;
+window.revokeManagerRightsFromEditModal = revokeManagerRightsFromEditModal;
 window.editPunch = editPunch;
 window.deletePunch = deletePunch;
 

@@ -171,6 +171,38 @@ body {
     padding: 8px 14px;
     font-size: 14px;
 }
+
+/* Role segmented control (Employee | Manager) next to status badge */
+.role-segmented {
+    display: inline-flex;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+.role-segmented .role-seg-opt {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    background: #f8f9fa;
+    color: #495057;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.role-segmented .role-seg-opt:first-child {
+    border-right: 1px solid #ced4da;
+}
+.role-segmented .role-seg-opt.active {
+    background: #667eea;
+    color: white;
+}
+.role-segmented .role-seg-opt:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
 .navbar-logo {
     max-height: 40px;
     max-width: 180px;
