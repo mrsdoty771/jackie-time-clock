@@ -4,6 +4,7 @@ const { requireAuth, requireCompany, requireManager } = require('../middleware/a
 
 router.get('/login-options', authController.getLoginOptions);
 router.post('/login', authController.login);
+router.post('/forgot-password', authController.resetPassword);
 router.post('/logout', authController.logout);
 router.get('/me', authController.me);
 router.get('/profile', requireAuth, requireCompany, authController.getProfile);

@@ -287,16 +287,54 @@ function getLoginOptions(req, res) {
   const out = { superAdmin: superCompanyId && superUsername ? { companyId: superCompanyId, username: superUsername } : null };
 
   // Only return standalone managers (no employeeId) for dropdown; granted managers log in as employee (name + password)
+  // Exclude a standalone manager only when an active employee has the same name AND that employee's role is 'employee' (manager rights were revoked) — so they appear once as employee, not as "(Manager)"
   if (companyId) {
     User.find({ companyId, role: 'manager', employeeId: null })
       .select('username name')
       .lean()
       .then((users) => {
-        out.managers = (users || []).map((u) => ({
-          username: u.username,
-          name: u.name || u.username,
-        }));
-        return res.json(out);
+        return Employee.find({ companyId, active: true })
+          .select('_id name')
+          .lean()
+          .then((employees) => {
+            const employeeIds = (employees || []).map((e) => e._id);
+            return User.find({
+              companyId,
+              employeeId: { $in: employeeIds },
+              role: 'employee',
+            })
+              .select('employeeId')
+              .lean()
+              .then((employeeOnlyUsers) => {
+                const employeeOnlyIds = new Set(
+                  (employeeOnlyUsers || []).map((u) => String(u.employeeId))
+                );
+                const namesOfRevokedOrEmployeeOnly = new Set(
+                  (employees || [])
+                    .filter((e) => employeeOnlyIds.has(String(e._id)))
+                    .map((e) => (e.name || '').trim().toLowerCase())
+                    .filter(Boolean)
+                );
+                const hiddenUserNames = new Set(
+                  (process.env.LOGIN_HIDE_MANAGER_USERNAMES || 'Josh')
+                    .split(',')
+                    .map((s) => s.trim().toLowerCase())
+                    .filter(Boolean)
+                );
+                const managerList = (users || [])
+                  .map((u) => ({
+                    username: u.username,
+                    name: u.name || u.username,
+                  }))
+                  .filter(
+                    (m) =>
+                      !namesOfRevokedOrEmployeeOnly.has((m.name || m.username || '').trim().toLowerCase()) &&
+                      !hiddenUserNames.has((m.username || '').trim().toLowerCase())
+                  );
+                out.managers = managerList;
+                return res.json(out);
+              });
+          });
       })
       .catch((err) => {
         console.error('getLoginOptions managers:', err);
@@ -310,5 +348,61 @@ function getLoginOptions(req, res) {
   return res.json(out);
 }
 
-module.exports = { login, logout, me, getProfile, updateProfile, testEmail, getLoginOptions };
+// POST /api/forgot-password — public; reset password by companyId + identity (username or employee_id)
+// Body: { companyId, username?, employee_id?, newPassword, confirmPassword }
+async function resetPassword(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const companyId = normalizeCompanyId(body.companyId);
+  const { username, employee_id, newPassword, confirmPassword } = body;
+
+  if (!companyId) {
+    return res.status(400).json({ error: 'Company ID is required' });
+  }
+  if (!newPassword || String(newPassword).trim().length === 0) {
+    return res.status(400).json({ error: 'New password is required' });
+  }
+  if (String(newPassword).trim().length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ error: 'Passwords do not match' });
+  }
+
+  try {
+    let user = null;
+    if (employee_id) {
+      const emp = await Employee.findOne({ _id: employee_id, companyId, active: true }).lean();
+      if (!emp) {
+        return res.status(404).json({ error: 'User not found. Check Company ID and name.' });
+      }
+      user = await User.findOne({
+        companyId,
+        employeeId: emp._id,
+        role: { $in: ['employee', 'manager'] },
+      });
+    } else if (username && String(username).trim()) {
+      user = await User.findOne({
+        companyId,
+        username: String(username).trim(),
+      });
+    } else {
+      return res.status(400).json({ error: 'Select your name and try again.' });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found. Check Company ID and name.' });
+    }
+
+    user.password = bcrypt.hashSync(String(newPassword).trim(), 10);
+    await user.save();
+
+    return res.json({ success: true, message: 'Password updated. You can log in with your new password.' });
+  } catch (err) {
+    console.error('resetPassword error:', err.message || err);
+    return res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+}
+
+module.exports = { login, logout, me, getProfile, updateProfile, testEmail, getLoginOptions, resetPassword };
 

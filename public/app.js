@@ -217,6 +217,41 @@ function setupEventListeners() {
         handleLogin(e);
         return false;
     });
+    // Clear password when user picks a different name from the dropdown
+    document.getElementById('user-select')?.addEventListener('change', () => {
+        const pwd = document.getElementById('password');
+        if (pwd) pwd.value = '';
+    });
+    // Forgot password: show forgot form, hide login password + button
+    document.getElementById('forgot-password-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById('login-password-row')?.classList.add('hidden');
+        document.getElementById('login-submit-btn')?.classList.add('hidden');
+        document.getElementById('forgot-password-link-wrap')?.classList.add('hidden');
+        document.getElementById('forgot-password-section')?.classList.remove('hidden');
+        document.getElementById('login-error').textContent = '';
+        document.getElementById('forgot-password-message').textContent = '';
+    });
+    // Back to login
+    document.getElementById('back-to-login-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById('login-password-row')?.classList.remove('hidden');
+        document.getElementById('login-submit-btn')?.classList.remove('hidden');
+        document.getElementById('forgot-password-link-wrap')?.classList.remove('hidden');
+        document.getElementById('forgot-password-section')?.classList.add('hidden');
+        document.getElementById('forgot-password-message').textContent = '';
+        document.getElementById('forgot-password-form')?.reset();
+    });
+    document.getElementById('forgot-password-form')?.addEventListener('submit', handleForgotPasswordSubmit);
+    // Eye toggles for forgot-password form
+    document.getElementById('forgot-new-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        togglePasswordVisibility('forgot-new-password', 'forgot-new-password-toggle');
+    });
+    document.getElementById('forgot-confirm-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        togglePasswordVisibility('forgot-confirm-password', 'forgot-confirm-password-toggle');
+    });
     document.getElementById('company-id')?.addEventListener('input', () => {
         loadCompanyNameForLogin();
         loadEmployeesForLogin();
@@ -355,6 +390,22 @@ function setupEventListeners() {
     document.getElementById('manager-profile-form')?.addEventListener('submit', handleManagerProfileSubmit);
     document.getElementById('send-test-email-btn')?.addEventListener('click', handleSendTestEmail);
 
+    // Login page: eye toggles password visibility
+    document.getElementById('login-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('password');
+        const btn = document.getElementById('login-password-toggle');
+        const showIcon = btn?.querySelector('.pwd-icon-show');
+        const hideIcon = btn?.querySelector('.pwd-icon-hide');
+        if (!input || !btn) return;
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+        btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+        if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
+        if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
+    });
+
     // My Account: eye toggles password visibility (same pattern for both)
     document.getElementById('profile-smtp-password-toggle')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -371,15 +422,16 @@ function setupEventListeners() {
         if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
     });
 
-    // Edit Employee: same eye toggle as My Account (direct listener on the button)
-    document.getElementById('edit-emp-password-toggle')?.addEventListener('click', (e) => {
+    // Edit Employee: eye toggle (delegation so click on icon inside button works)
+    document.getElementById('edit-employee-modal')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('#edit-emp-password-toggle');
+        if (!btn) return;
         e.preventDefault();
         e.stopPropagation();
         const input = document.getElementById('edit-emp-password');
-        const btn = document.getElementById('edit-emp-password-toggle');
-        const showIcon = btn?.querySelector('.pwd-icon-show');
-        const hideIcon = btn?.querySelector('.pwd-icon-hide');
-        if (!input || !btn) return;
+        const showIcon = btn.querySelector('.pwd-icon-show');
+        const hideIcon = btn.querySelector('.pwd-icon-hide');
+        if (!input) return;
         const isPassword = input.type === 'password';
         input.type = isPassword ? 'text' : 'password';
         btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
@@ -399,17 +451,33 @@ function setupEventListeners() {
     // Employee Management dropdown: show selected employee details
     document.getElementById('employee-management-select')?.addEventListener('change', updateEmployeeManagementDetails);
 
-    // Role toggle: use delegation so it works for dynamically rendered employee cards
+    // Role toggle: only update visual state; Save button applies the change
     document.getElementById('employee-management-details')?.addEventListener('click', function (e) {
         const seg = e.target.closest('.role-segmented');
         if (!seg) return;
         const btn = e.target.closest('.role-seg-opt');
         if (!btn || btn.disabled) return;
         if (btn.classList.contains('active')) return; // already selected, no-op
+        seg.querySelectorAll('.role-seg-opt').forEach((b) => {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
+    });
+    // Save role (Employee/Manager) from card
+    document.getElementById('employee-management-details')?.addEventListener('click', function (e) {
+        const saveBtn = e.target.closest('.btn-save-role');
+        if (!saveBtn) return;
+        e.preventDefault();
+        const card = saveBtn.closest('.employee-card');
+        if (!card) return;
+        const seg = card.querySelector('.role-segmented');
+        if (!seg) return;
         const employeeId = seg.getAttribute('data-employee-id');
-        if (!employeeId) return;
-        const role = btn.getAttribute('data-role');
-        const isManager = role === 'manager';
+        const activeBtn = seg.querySelector('.role-seg-opt.active');
+        if (!employeeId || !activeBtn) return;
+        const isManager = activeBtn.getAttribute('data-role') === 'manager';
         setEmployeeRoleFromCard(employeeId, isManager, seg);
     });
 
@@ -425,9 +493,7 @@ function loadEmployeesForLogin() {
 
     const previousValue = select.value;
 
-    select.innerHTML = '<option value="">-- Select Name --</option>' +
-        '<option value="admin">Admin (Manager)</option>' +
-        '<option value="Josh">Josh</option>';
+    select.innerHTML = '<option value="">-- Select Name --</option>';
 
     const companyId = getLoginCompanyId();
 
@@ -439,19 +505,18 @@ function loadEmployeesForLogin() {
         companyId ? fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`).then(r => r.json()) : Promise.resolve([])
     ]).then(([opts, empData]) => {
         loginOptions = opts || { superAdmin: null };
-        const superAdminOpt = loginOptions.superAdmin
-            ? '<option value="superadmin">Super Admin</option>'
-            : '';
-        const managerOpts = (opts.managers || []).map(m =>
-            `<option value="mgr_${escapeHtml(m.username)}">${escapeHtml(m.name)} (Manager)</option>`
+        const managers = opts.managers || [];
+        const managerNames = new Set(managers.map(m => (m.name || m.username || '').trim().toLowerCase()));
+        const managerOpts = managers.map(m =>
+            `<option value="mgr_${escapeHtml(m.username)}">${escapeHtml(m.name || m.username)}</option>`
         ).join('');
-        const employeeOptions = (empData || []).map(emp =>
+        // Exclude employees whose name matches a manager so each person appears only once
+        const employeesDeduped = (empData || []).filter(emp => !managerNames.has((emp.name || '').trim().toLowerCase()));
+        const employeeOptions = employeesDeduped.map(emp =>
             `<option value="emp_${emp.id}">${escapeHtml(emp.name)}</option>`
         ).join('');
         select.innerHTML = '<option value="">-- Select Name --</option>' +
-            '<option value="admin">Admin (Manager)</option>' +
-            '<option value="Josh">Josh</option>' +
-            superAdminOpt +
+            '<option value="admin">Admin</option>' +
             managerOpts +
             employeeOptions;
         if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
@@ -467,8 +532,7 @@ function loadEmployeesForLogin() {
                         `<option value="emp_${emp.id}">${emp.name}</option>`
                     ).join('');
                     select.innerHTML = '<option value="">-- Select Name --</option>' +
-                        '<option value="admin">Admin (Manager)</option>' +
-                        '<option value="Josh">Josh</option>' + employeeOptions;
+                        '<option value="admin">Admin</option>' + employeeOptions;
                     if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
                         select.value = previousValue;
                     }
@@ -476,6 +540,103 @@ function loadEmployeesForLogin() {
                 .catch(e => console.error('Error loading employees:', e));
         }
     });
+}
+
+function togglePasswordVisibility(inputId, btnId) {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    const showIcon = btn?.querySelector('.pwd-icon-show');
+    const hideIcon = btn?.querySelector('.pwd-icon-hide');
+    if (!input || !btn) return;
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+    btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
+    if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
+    if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
+}
+
+function handleForgotPasswordSubmit(e) {
+    e.preventDefault();
+    const companyId = getLoginCompanyId();
+    const selectedValue = document.getElementById('user-select').value;
+    const newPassword = document.getElementById('forgot-new-password').value;
+    const confirmPassword = document.getElementById('forgot-confirm-password').value;
+    const msgEl = document.getElementById('forgot-password-message');
+
+    if (!companyId) {
+        msgEl.textContent = 'Please enter your Company ID above.';
+        msgEl.style.color = 'red';
+        return;
+    }
+    if (!selectedValue) {
+        msgEl.textContent = 'Please select your name above.';
+        msgEl.style.color = 'red';
+        return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+        msgEl.textContent = 'New password must be at least 6 characters.';
+        msgEl.style.color = 'red';
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        msgEl.textContent = 'Passwords do not match.';
+        msgEl.style.color = 'red';
+        return;
+    }
+
+    let body = { companyId, newPassword, confirmPassword };
+    if (selectedValue === 'admin') {
+        body.username = 'admin';
+    } else if (selectedValue.startsWith('mgr_')) {
+        body.username = selectedValue.replace('mgr_', '');
+    } else if (selectedValue.startsWith('emp_')) {
+        body.employee_id = selectedValue.replace('emp_', '');
+    } else {
+        msgEl.textContent = 'Please select your name above.';
+        msgEl.style.color = 'red';
+        return;
+    }
+
+    msgEl.textContent = '';
+    fetch(`${API_BASE}/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include'
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                // Server returned HTML — request likely didn't reach the Node API (wrong URL or app not restarted)
+                msgEl.innerHTML = 'Request did not reach the server. Open the app at the same address as the server (e.g. <strong>http://localhost:3000</strong>), restart with <strong>npm start</strong>, then try again.';
+                msgEl.style.color = 'red';
+                return;
+            }
+            if (data.error && data.path === '/forgot-password') {
+                msgEl.textContent = 'Forgot-password route not found. Restart the server (npm start) and try again.';
+                msgEl.style.color = 'red';
+                return;
+            }
+            if (data.success) {
+                msgEl.textContent = data.message || 'Password updated. You can log in with your new password.';
+                msgEl.style.color = 'green';
+                document.getElementById('forgot-password-form').reset();
+                setTimeout(() => {
+                    document.getElementById('back-to-login-link').click();
+                }, 2000);
+            } else {
+                msgEl.textContent = data.error || 'Something went wrong.';
+                msgEl.style.color = 'red';
+            }
+        })
+        .catch(err => {
+            msgEl.textContent = err.message || 'Something went wrong. Please try again.';
+            msgEl.style.color = 'red';
+        });
 }
 
 function handleLogin(e) {
@@ -490,24 +651,15 @@ function handleLogin(e) {
         return;
     }
 
-    const isSuperAdmin = selectedValue === 'superadmin' && loginOptions.superAdmin;
-    if (!isSuperAdmin && !companyId) {
+    if (!companyId) {
         errorDiv.textContent = 'Please enter your Company ID';
         return;
     }
 
     let loginData;
 
-    if (isSuperAdmin) {
-        loginData = {
-            username: loginOptions.superAdmin.username,
-            password,
-            companyId: loginOptions.superAdmin.companyId
-        };
-    } else if (selectedValue === 'admin') {
+    if (selectedValue === 'admin') {
         loginData = { username: 'admin', password, companyId };
-    } else if (selectedValue === 'Josh') {
-        loginData = { username: 'Josh', password, companyId };
     } else if (selectedValue.startsWith('mgr_')) {
         const username = selectedValue.replace('mgr_', '');
         loginData = { username, password, companyId };
@@ -955,7 +1107,8 @@ function updateEmployeeManagementDetails() {
                 <h4>${escapeHtml(emp.name)}${statusBadge}${roleSegment}</h4>
                 <p>Employee #: ${escapeHtml(emp.employee_number)}${emp.email ? ` | Email: ${escapeHtml(emp.email)}` : ''}${emp.phone ? ` | Phone: ${escapeHtml(emp.phone)}` : ''}</p>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary btn-save-role">Save</button>
                 <button class="btn btn-primary" onclick="editEmployee('${empIdEsc}')">Edit</button>
                 <button class="btn btn-danger" onclick="removeEmployee('${empIdEsc}')">Remove</button>
             </div>
@@ -1203,21 +1356,16 @@ function populateEditForm(employee) {
     if (managerSectionEl) {
         const empId = String(employee.id || employee._id || '');
         const empIdEsc = empId.replace(/'/g, "\\'");
-        if (hasManager) {
-            managerSectionEl.innerHTML = `
-                <div class="manager-rights-section" style="padding: 12px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #667eea;">
-                    <strong>Has manager rights.</strong> They log in with their name and password and see the manager dashboard.
-                    <div style="margin-top: 8px;">
-                        <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRightsFromEditModal('${empIdEsc}')">Revoke manager rights</button>
-                    </div>
-                </div>`;
-        } else {
-            managerSectionEl.innerHTML = `
-                <div class="manager-rights-section">
-                    <button type="button" class="btn btn-primary" onclick="openGrantManagerModalFromEditModal('${empIdEsc}')">Grant manager rights</button>
-                    <small style="display: block; margin-top: 6px; color: #666;">They will keep the same login (name + password) and see the manager dashboard.</small>
-                </div>`;
-        }
+        managerSectionEl.innerHTML = `
+            <div class="manager-rights-section" style="padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+                <strong>Manager rights</strong>
+                ${hasManager ? '<p style="margin: 6px 0 0 0; color: #666; font-size: 14px;">Has manager rights. They see the manager dashboard.</p>' : ''}
+                <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-primary btn-small" onclick="openGrantManagerModalFromEditModal('${empIdEsc}')" ${hasManager ? 'disabled' : ''}>Grant manager rights</button>
+                    <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRightsFromEditModal('${empIdEsc}')" ${!hasManager ? 'disabled' : ''}>Take away manager rights</button>
+                </div>
+                <small style="display: block; margin-top: 8px; color: #666;">Same login (name + password); grant = manager dashboard, take away = time clock only.</small>
+            </div>`;
     }
     document.getElementById('edit-employee-modal').classList.remove('hidden');
 }
@@ -1314,8 +1462,11 @@ function setEmployeeRoleFromCard(employeeId, isManager, segContainerEl) {
         showMessage('Cannot update role: missing employee.', 'error');
         return;
     }
+    const card = segContainerEl.closest('.employee-card');
     const opts = segContainerEl.querySelectorAll('.role-seg-opt');
+    const saveBtn = card?.querySelector('.btn-save-role');
     opts.forEach((b) => { b.disabled = true; });
+    if (saveBtn) saveBtn.disabled = true;
     const endpoint = isManager ? 'grant-manager' : 'revoke-manager';
     const url = `${API_BASE}/employees/${encodeURIComponent(employeeId)}/${endpoint}`;
     fetch(url, {
@@ -1346,11 +1497,13 @@ function setEmployeeRoleFromCard(employeeId, isManager, segContainerEl) {
             } else {
                 showMessage(data.error || 'Failed to update role', 'error');
                 opts.forEach((b) => { b.disabled = false; });
+                if (saveBtn) saveBtn.disabled = false;
             }
         })
         .catch((err) => {
             showMessage(err.message || 'Error updating role', 'error');
             opts.forEach((b) => { b.disabled = false; });
+            if (saveBtn) saveBtn.disabled = false;
         });
 }
 
@@ -1377,7 +1530,7 @@ function openGrantManagerModalFromEditModal(employeeId) {
 function revokeManagerRightsFromEditModal(employeeId) {
     const nameEl = document.getElementById('edit-emp-name');
     const name = (nameEl && nameEl.value) ? nameEl.value.trim() : 'this employee';
-    if (!confirm('Revoke manager rights for ' + name + '? They will keep the same login but see the employee time clock instead of the manager dashboard.')) return;
+    if (!confirm('Take away manager rights for ' + name + '? They will keep the same login but see the employee time clock instead of the manager dashboard.')) return;
     fetch(`${API_BASE}/employees/${employeeId}/revoke-manager`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' })
         .then(async (res) => {
             const text = await res.text();

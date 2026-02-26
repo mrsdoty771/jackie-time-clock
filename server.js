@@ -73,6 +73,11 @@ app.use('/api', punchRoutes);
 app.use('/api', companySettingsRoutes);
 app.use('/api', reportsRoutes);
 
+// Any unmatched /api/* returns JSON 404 (never HTML)
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found', path: req.path });
+});
+
 // 7. Serve Static Files (Frontend)
 app.use(express.static(path.join(__dirname, 'public')));
 
