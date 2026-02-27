@@ -119,17 +119,17 @@
         
         <div class="container">
             <div class="tabs">
-                <button class="tab-btn" data-tab="employees">Employees</button>
-                <button class="tab-btn" data-tab="punches">Manual Punch</button>
+                <button class="tab-btn active" data-tab="punches">Manual Punch</button>
                 <button class="tab-btn" data-tab="edit-punches">Edit Employee Punches</button>
                 <button class="tab-btn" data-tab="reports">Reports</button>
-                <button class="tab-btn" data-tab="company-settings">Company Settings</button>
+                <button class="tab-btn" data-tab="employees">Employees</button>
                 <button class="tab-btn" data-tab="my-account">My Account</button>
-                <button class="tab-btn active" data-tab="my-clock">My Clock</button>
+                <button class="tab-btn" data-tab="my-clock">My Clock</button>
+                <button class="tab-btn" data-tab="company-settings">Company Settings</button>
             </div>
             
             <!-- My Clock Tab (manager clock in/out) -->
-            <div id="my-clock-tab" class="tab-content active">
+            <div id="my-clock-tab" class="tab-content">
                 <div id="my-clock-no-link" class="form-group hidden" style="padding: 16px; background: #f8f8f8; border-radius: 8px;">
                     <p style="margin: 0; color: #666;">To clock in here, add yourself as an employee in the <strong>Employees</strong> tab, then use <strong>Manual Punch</strong> and select yourself. Or ask an admin to link your manager account to your employee record.</p>
                 </div>
@@ -183,7 +183,7 @@
             </div>
             
             <!-- Manual Punch Tab -->
-            <div id="punches-tab" class="tab-content">
+            <div id="punches-tab" class="tab-content active">
                 <h3>Manual Time Punch</h3>
                 <form id="manual-punch-form" class="form">
                     <div class="form-group">

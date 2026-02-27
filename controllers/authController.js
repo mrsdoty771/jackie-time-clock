@@ -293,10 +293,10 @@ function getLoginOptions(req, res) {
       .select('username name')
       .lean()
       .then((users) => {
-        return Employee.find({ companyId, active: true })
-          .select('_id name')
-          .lean()
-          .then((employees) => {
+        return Promise.all([
+          Employee.find({ companyId, active: true }).select('_id name').lean(),
+          Employee.find({ companyId, active: false }).select('name').lean(),
+        ]).then(([employees, inactiveEmployees]) => {
             const employeeIds = (employees || []).map((e) => e._id);
             return User.find({
               companyId,
@@ -321,7 +321,10 @@ function getLoginOptions(req, res) {
                     .map((s) => s.trim().toLowerCase())
                     .filter(Boolean)
                 );
-                const managerList = (users || [])
+                const inactiveNamesLower = new Set(
+                  (inactiveEmployees || []).map((e) => (e.name || '').trim().toLowerCase()).filter(Boolean)
+                );
+                let managerList = (users || [])
                   .map((u) => ({
                     username: u.username,
                     name: u.name || u.username,
@@ -331,6 +334,10 @@ function getLoginOptions(req, res) {
                       !namesOfRevokedOrEmployeeOnly.has((m.name || m.username || '').trim().toLowerCase()) &&
                       !hiddenUserNames.has((m.username || '').trim().toLowerCase())
                   );
+                // Hide standalone managers whose name matches an inactive employee (they should not appear on login)
+                managerList = managerList.filter(
+                  (m) => !inactiveNamesLower.has((m.name || m.username || '').trim().toLowerCase())
+                );
                 out.managers = managerList;
                 return res.json(out);
               });

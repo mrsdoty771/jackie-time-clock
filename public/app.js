@@ -9,6 +9,8 @@ let loginOptions = { superAdmin: null };
 let lastReportData = null;
 /** Company timezone (IANA, e.g. America/New_York). Set after login via loadCompanyTimezone(). */
 let companyTimezone = 'UTC';
+/** When super-admin has no linked employee, My Clock uses this company "Admin" employee id for punches and listing. */
+let myClockAdminEmployeeId = null;
 
 // When any API returns 401 (e.g. idle timeout), show login and message
 function handleSessionExpired(message) {
@@ -939,19 +941,44 @@ function loadMyClockState() {
     const noLinkEl = document.getElementById('my-clock-no-link');
     const sectionEl = document.getElementById('my-clock-section');
     if (!noLinkEl || !sectionEl) return;
-    if (!currentUser?.employee_id) {
-        noLinkEl.classList.remove('hidden');
-        sectionEl.classList.add('hidden');
+    const hasLink = !!currentUser?.employee_id;
+    const isManagerNoLink = (currentUser?.role === 'manager' || currentUser?.role === 'super-admin') && !hasLink;
+    if (hasLink) {
+        myClockAdminEmployeeId = null;
+        noLinkEl.classList.add('hidden');
+        sectionEl.classList.remove('hidden');
+        loadMyClockPunches();
         return;
     }
-    noLinkEl.classList.add('hidden');
-    sectionEl.classList.remove('hidden');
-    loadMyClockPunches();
+    if (isManagerNoLink) {
+        myClockAdminEmployeeId = null;
+        fetch(`${API_BASE}/company-admin-employee`, { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.employee_id) {
+                    myClockAdminEmployeeId = data.employee_id;
+                    noLinkEl.classList.add('hidden');
+                    sectionEl.classList.remove('hidden');
+                    loadMyClockPunches();
+                } else {
+                    noLinkEl.classList.remove('hidden');
+                    sectionEl.classList.add('hidden');
+                }
+            })
+            .catch(() => {
+                noLinkEl.classList.remove('hidden');
+                sectionEl.classList.add('hidden');
+            });
+        return;
+    }
+    noLinkEl.classList.remove('hidden');
+    sectionEl.classList.add('hidden');
 }
 
 function loadMyClockPunches() {
-    if (!currentUser?.employee_id) return;
-    const url = `${API_BASE}/punches?employee_id=${encodeURIComponent(currentUser.employee_id)}`;
+    const effectiveEmployeeId = currentUser?.employee_id || myClockAdminEmployeeId;
+    if (!effectiveEmployeeId) return;
+    const url = `${API_BASE}/punches?employee_id=${encodeURIComponent(effectiveEmployeeId)}`;
     fetch(url, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {

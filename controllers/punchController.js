@@ -3,6 +3,23 @@ const Employee = require('../models/Employee');
 const { sendPunchNotification } = require('../utils/sms');
 const { getCompanyTimezone, getUtcRangeForLocalDate } = require('../utils/timezone');
 
+const ADMIN_EMPLOYEE_NUMBER = 'ADMIN';
+
+/** Get or create the company's "Admin" employee used for super-admin My Clock when not linked to a personal employee. */
+async function getOrCreateAdminEmployee(companyId) {
+  let emp = await Employee.findOne({ companyId, employeeNumber: ADMIN_EMPLOYEE_NUMBER }).lean();
+  if (!emp) {
+    const created = await Employee.create({
+      companyId,
+      name: 'Admin',
+      employeeNumber: ADMIN_EMPLOYEE_NUMBER,
+      active: true,
+    });
+    emp = created.toObject ? created.toObject() : created;
+  }
+  return emp;
+}
+
 // POST /api/punch
 // Body: { punch_type, notes, employee_id? }
 async function createPunch(req, res) {
@@ -17,14 +34,19 @@ async function createPunch(req, res) {
     return res.status(400).json({ error: 'Invalid punch type' });
   }
 
-  // Employees punch themselves; managers can punch someone (employee_id) or themselves (omit employee_id)
+  // Employees punch themselves; managers/super-admin can punch someone (employee_id) or themselves (omit employee_id)
   let targetEmployeeId =
-    user.role === 'manager'
+    user.role === 'manager' || user.role === 'super-admin'
       ? (employee_id || (user.employee_id ? String(user.employee_id) : null))
       : user.employee_id;
+  // Manager or super-admin without a linked employee uses the company's "Admin" employee so they can punch from My Clock without adding themselves
+  if (!targetEmployeeId && (user.role === 'super-admin' || user.role === 'manager')) {
+    const adminEmp = await getOrCreateAdminEmployee(companyId);
+    targetEmployeeId = String(adminEmp._id);
+  }
   if (!targetEmployeeId) {
     return res.status(400).json({
-      error: user.role === 'manager'
+      error: user.role === 'manager' || user.role === 'super-admin'
         ? 'To clock in from the dashboard, add yourself as an employee and link your manager account, or use Manual Punch and select yourself.'
         : 'Employee ID required',
     });
@@ -178,5 +200,25 @@ async function deletePunch(req, res) {
   }
 }
 
-module.exports = { createPunch, listPunches, getPunch, updatePunch, deletePunch };
+// GET /api/company-admin-employee — returns the "Admin" employee for the current company (for manager/super-admin My Clock when not linked)
+async function getCompanyAdminEmployee(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const companyId = req.companyId;
+  try {
+    const emp = await getOrCreateAdminEmployee(companyId);
+    return res.json({ employee_id: String(emp._id), name: emp.name });
+  } catch (err) {
+    console.error('getCompanyAdminEmployee error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
+module.exports = {
+  createPunch,
+  listPunches,
+  getPunch,
+  updatePunch,
+  deletePunch,
+  getCompanyAdminEmployee,
+};
 
