@@ -513,7 +513,10 @@ function loadEmployeesForLogin() {
             `<option value="mgr_${escapeHtml(m.username)}">${escapeHtml(m.name || m.username)}</option>`
         ).join('');
         // Exclude employees whose name matches a manager so each person appears only once
-        const employeesDeduped = (empData || []).filter(emp => !managerNames.has((emp.name || '').trim().toLowerCase()));
+        let employeesDeduped = (empData || []).filter(emp => !managerNames.has((emp.name || '').trim().toLowerCase()));
+        // Exclude the company "Admin" employee so we don't show two "Admin" entries (hardcoded manager Admin + this employee)
+        const adminEmployeeNameLower = 'admin';
+        employeesDeduped = employeesDeduped.filter(emp => (emp.name || '').trim().toLowerCase() !== adminEmployeeNameLower);
         const employeeOptions = employeesDeduped.map(emp =>
             `<option value="emp_${emp.id}">${escapeHtml(emp.name)}</option>`
         ).join('');
@@ -530,7 +533,8 @@ function loadEmployeesForLogin() {
             fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`)
                 .then(res => res.json())
                 .then(data => {
-                    const employeeOptions = (data || []).map(emp =>
+                    const employeesFiltered = (data || []).filter(emp => (emp.name || '').trim().toLowerCase() !== 'admin');
+                    const employeeOptions = employeesFiltered.map(emp =>
                         `<option value="emp_${emp.id}">${emp.name}</option>`
                     ).join('');
                     select.innerHTML = '<option value="">-- Select Name --</option>' +
