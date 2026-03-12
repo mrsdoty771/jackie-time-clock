@@ -280,9 +280,27 @@ function setupEventListeners() {
     // Employee management
     document.getElementById('add-employee-btn')?.addEventListener('click', () => {
         document.getElementById('add-employee-modal').classList.remove('hidden');
+        const empNumberInput = document.getElementById('emp-number');
+        if (empNumberInput) {
+            empNumberInput.value = '';
+            empNumberInput.placeholder = 'Loading…';
+            fetch(`${API_BASE}/employees/next-number`, { credentials: 'include' })
+                .then(res => res.ok ? res.json() : null)
+                .then(data => {
+                    empNumberInput.placeholder = 'Leave blank to auto-generate';
+                    if (data && data.nextNumber) empNumberInput.value = data.nextNumber;
+                })
+                .catch(() => {
+                    empNumberInput.placeholder = 'Leave blank to auto-generate';
+                });
+        }
     });
     
     document.getElementById('add-employee-form')?.addEventListener('submit', handleAddEmployee);
+    document.getElementById('add-employee-submit-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleAddEmployee(e);
+    });
     document.getElementById('cancel-add-btn')?.addEventListener('click', () => {
         document.getElementById('add-employee-modal').classList.add('hidden');
         document.getElementById('add-employee-form').reset();
@@ -1660,43 +1678,74 @@ function handleConfirmGrantManager() {
 
 function handleAddEmployee(e) {
     e.preventDefault();
+    const nameEl = document.getElementById('emp-name');
+    const name = nameEl ? nameEl.value.trim() : '';
+    if (!name) {
+        showMessage('Please enter the employee name.', 'error');
+        return;
+    }
     const passwordInput = document.getElementById('emp-password');
-    const employee = {
-        name: document.getElementById('emp-name').value,
-        employee_number: document.getElementById('emp-number').value,
-        email: document.getElementById('emp-email').value,
-        phone: document.getElementById('emp-phone').value
-    };
-    if (passwordInput && passwordInput.value.trim()) {
-        employee.password = passwordInput.value;
+    const hireDateInput = document.getElementById('emp-hire-date');
+    const empNumberInput = document.getElementById('emp-number');
+    let employeeNumber = empNumberInput ? empNumberInput.value.trim() : '';
+
+    function doSubmit(num) {
+        const employee = {
+            name,
+            employee_number: num || '',
+            email: document.getElementById('emp-email')?.value ?? '',
+            phone: document.getElementById('emp-phone')?.value ?? ''
+        };
+        if (hireDateInput && hireDateInput.value.trim()) {
+            employee.hire_date = hireDateInput.value;
+        }
+        if (passwordInput && passwordInput.value.trim()) {
+            employee.password = passwordInput.value;
+        }
+        if (!employee.employee_number) delete employee.employee_number;
+
+        fetch(`${API_BASE}/employees`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(employee),
+            credentials: 'include'
+        })
+        .then(async (res) => {
+            const contentType = res.headers.get('content-type');
+            const data = (contentType && contentType.includes('application/json')) ? await res.json() : { error: 'Server error' };
+            if (data.success) {
+                const tempPwd = data.temp_password ? ` Temporary password: ${data.temp_password}` : ' They can log in with the password you set and change it later.';
+                showMessage('Employee added successfully!' + tempPwd, 'success');
+                document.getElementById('add-employee-modal').classList.add('hidden');
+                document.getElementById('add-employee-form').reset();
+                const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
+                loadEmployees(currentFilter);
+                loadEmployeesForPunch();
+                loadEmployeesForReport();
+            } else {
+                showMessage(data.error || 'Failed to add employee', 'error');
+            }
+        })
+        .catch((err) => {
+            console.error('Add employee error:', err);
+            showMessage('Error adding employee. Check the console or try again.', 'error');
+        });
     }
 
-    fetch(`${API_BASE}/employees`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(employee),
-        credentials: 'include'
-    })
-    .then(res => res.json())
-        .then(data => {
-        if (data.success) {
-            const tempPwd = data.temp_password ? ` Temporary password: ${data.temp_password}` : ' They can log in with the password you set and change it later.';
-            showMessage('Employee added successfully!' + tempPwd, 'success');
-            document.getElementById('add-employee-modal').classList.add('hidden');
-            document.getElementById('add-employee-form').reset();
-            // Reload with current filter
-            const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
-            loadEmployees(currentFilter);
-            loadEmployeesForPunch();
-            loadEmployeesForReport();
-            // Login dropdown is loaded on the login page based on Company ID input
-        } else {
-            showMessage(data.error || 'Failed to add employee', 'error');
-        }
-    })
-    .catch(err => {
-        showMessage('Error adding employee', 'error');
-    });
+    if (employeeNumber) {
+        doSubmit(employeeNumber);
+    } else {
+        fetch(`${API_BASE}/employees/next-number`, { credentials: 'include' })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                const next = (data && data.nextNumber) ? data.nextNumber : '';
+                if (next && empNumberInput) empNumberInput.value = next;
+                doSubmit(next);
+            })
+            .catch(() => {
+                doSubmit('');
+            });
+    }
 }
 
 function handleManualPunch(e) {
@@ -2500,13 +2549,16 @@ function formatDate(dateStr) {
 
 function showMessage(message, type = 'success') {
     const messageDiv = document.getElementById('message');
-    messageDiv.textContent = message;
-    messageDiv.className = `message ${type}`;
-    messageDiv.classList.remove('hidden');
-    
-    setTimeout(() => {
-        messageDiv.classList.add('hidden');
-    }, 5000);
+    if (messageDiv) {
+        messageDiv.textContent = message;
+        messageDiv.className = `message ${type}`;
+        messageDiv.classList.remove('hidden');
+        setTimeout(() => {
+            messageDiv.classList.add('hidden');
+        }, 5000);
+    } else {
+        alert(message);
+    }
 }
 
 function showGreatDayModal(employeeName) {

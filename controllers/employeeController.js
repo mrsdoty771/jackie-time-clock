@@ -149,24 +149,63 @@ async function getEmployee(req, res) {
   }
 }
 
+// GET /api/employees/next-number  (manager only) — returns next auto-generated employee number
+async function getNextEmployeeNumber(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const companyId = req.companyId;
+  try {
+    const existing = await Employee.find({ companyId }).select('employeeNumber').lean();
+    let maxNum = 0;
+    for (const e of existing || []) {
+      const n = parseInt(e.employeeNumber, 10);
+      if (!Number.isNaN(n) && n > maxNum) maxNum = n;
+    }
+    const nextNumber = String(maxNum + 1).padStart(4, '0');
+    return res.json({ nextNumber });
+  } catch (err) {
+    console.error('getNextEmployeeNumber error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
 // POST /api/employees  (manager only)
 async function createEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { name, employee_number, email, phone, password: initialPassword } = req.body;
+  let { name, employee_number, email, phone, hire_date, password: initialPassword } = req.body;
 
-  if (!name || !employee_number) {
-    return res.status(400).json({ error: 'Name and employee number are required' });
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  const hireDate = hire_date && String(hire_date).trim() ? new Date(hire_date) : undefined;
+  if (hireDate && isNaN(hireDate.getTime())) {
+    return res.status(400).json({ error: 'Invalid hire date' });
+  }
+
+  const raw = employee_number == null ? '' : String(employee_number).trim();
+  const numTrimmed = (raw === '' || raw === 'undefined') ? '' : raw;
+  if (!numTrimmed) {
+    const existing = await Employee.find({ companyId }).select('employeeNumber').lean();
+    let maxNum = 0;
+    for (const e of existing || []) {
+      const n = parseInt(e.employeeNumber, 10);
+      if (!Number.isNaN(n) && n > maxNum) maxNum = n;
+    }
+    employee_number = String(maxNum + 1).padStart(4, '0');
+  } else {
+    employee_number = numTrimmed;
   }
 
   try {
     const employee = await Employee.create({
       companyId,
       name: String(name).trim(),
-      employeeNumber: String(employee_number).trim(),
+      employeeNumber: String(employee_number),
       email: email ? String(email).trim() : undefined,
       phone: phone ? String(phone).trim() : undefined,
+      hireDate: hireDate || undefined,
       active: true,
     });
 
@@ -396,6 +435,7 @@ async function revokeManager(req, res) {
 module.exports = {
   listPublicEmployees,
   listEmployees,
+  getNextEmployeeNumber,
   getEmployee,
   createEmployee,
   updateEmployee,

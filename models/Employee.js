@@ -10,6 +10,7 @@ const EmployeeSchema = new mongoose.Schema(
     employeeNumber: { type: String, required: true },
     email: { type: String },
     phone: { type: String },
+    hireDate: { type: Date },
     active: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }
