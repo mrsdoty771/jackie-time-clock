@@ -71,6 +71,10 @@ body {
     color: #667eea;
 }
 
+#employee-page #logout-btn {
+    margin-left: 24px;
+}
+
 /* Manager dashboard: company left, title center, logout right */
 .navbar-manager {
     display: grid;

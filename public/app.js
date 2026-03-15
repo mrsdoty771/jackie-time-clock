@@ -169,6 +169,7 @@ function showPage(role) {
         loadEmployeesForEditPunches();
     } else {
         document.getElementById('employee-page').classList.remove('hidden');
+        updateEmployeePageTitle();
         updateEmployeeNameDisplay();
         // Initialize button states to allow clock in until records load
         updatePunchButtonStates([]);
@@ -2416,15 +2417,31 @@ function handleCompanySettings(e) {
         });
 }
 
+function updateEmployeePageTitle() {
+    const el = document.getElementById('employee-page-title');
+    if (!el) return;
+    fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            const companyName = (data && data.company_name && String(data.company_name).trim()) ? data.company_name.trim() : 'MVC';
+            el.textContent = `${companyName} Time Clock`;
+        })
+        .catch(() => { el.textContent = 'MVC Time Clock'; });
+}
+
 function updateLoginPageTitle(companyName) {
     const loginTitle = document.querySelector('#login-page h1');
     const pageTitle = document.querySelector('title');
-    
+    const employeePageTitle = document.getElementById('employee-page-title');
+
     if (loginTitle) {
         loginTitle.textContent = `${companyName} Time Clock`;
     }
     if (pageTitle) {
         pageTitle.textContent = `${companyName} Time Clock`;
+    }
+    if (employeePageTitle) {
+        employeePageTitle.textContent = `${companyName} Time Clock`;
     }
 }
 
