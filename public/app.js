@@ -1,6 +1,9 @@
 // API base URL
 const API_BASE = '/api';
 
+/** MVC Time Clock login uses this company only (no Company ID field on the login form). */
+const LOGIN_COMPANY_ID = 'MVC';
+
 // State
 let currentUser = null;
 let employees = [];
@@ -74,8 +77,7 @@ function loadCompanyNameForLogin() {
 }
 
 function getLoginCompanyId() {
-    const input = document.getElementById('company-id');
-    return input ? input.value.trim() : '';
+    return LOGIN_COMPANY_ID;
 }
 
 function initializeWeekStart() {
@@ -255,11 +257,6 @@ function setupEventListeners() {
         e.preventDefault();
         togglePasswordVisibility('forgot-confirm-password', 'forgot-confirm-password-toggle');
     });
-    document.getElementById('company-id')?.addEventListener('input', () => {
-        loadCompanyNameForLogin();
-        loadEmployeesForLogin();
-    });
-    
     // Logout
     document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
     document.getElementById('manager-logout-btn')?.addEventListener('click', handleLogout);

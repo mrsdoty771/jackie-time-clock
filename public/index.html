@@ -12,10 +12,6 @@
             <h1>MVC Time Clock</h1>
             <form id="login-form" onsubmit="if(typeof handleLogin==='function')handleLogin(event); return false;">
                 <div class="form-group">
-                    <label for="company-id">Company ID</label>
-                    <input type="text" id="company-id" placeholder="MVC" value="MVC" required>
-                </div>
-                <div class="form-group">
                     <label for="user-select">Select Your Name</label>
                     <select id="user-select" required>
                         <option value="">-- Select Name --</option>
@@ -36,7 +32,7 @@
                 <p class="login-forgot-link" id="forgot-password-link-wrap"><a href="#" id="forgot-password-link">Forgot password?</a></p>
             </form>
             <div id="forgot-password-section" class="hidden">
-                <p class="forgot-intro">Enter your new password below. Use the same Company ID and name above.</p>
+                <p class="forgot-intro">Enter your new password below. Use the same name you selected above.</p>
                 <form id="forgot-password-form">
                     <div class="form-group">
                         <label for="forgot-new-password">New password</label>
