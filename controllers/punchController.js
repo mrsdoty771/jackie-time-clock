@@ -21,13 +21,16 @@ async function getOrCreateAdminEmployee(companyId) {
 }
 
 // POST /api/punch
-// Body: { punch_type, notes, employee_id? }
+// Body: { punch_type, notes, employee_id?, punch_time? }
 async function createPunch(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { employee_id, punch_type, notes } = req.body;
+  const { employee_id, punch_type, notes, punch_time } = req.body;
   const user = req.session.user;
+  // #region agent log
+  if (typeof fetch === 'function') fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'manual-punch-date-time',hypothesisId:'H2',location:'controllers/punchController.js:createPunch',message:'createPunch request received',data:{role:user?.role||null,employee_id:employee_id||null,punch_type:punch_type||null,punch_time:punch_time||null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const validTypes = ['clock_in', 'clock_out', 'lunch_in', 'lunch_out'];
   if (!validTypes.includes(punch_type)) {
@@ -57,12 +60,23 @@ async function createPunch(req, res) {
     const emp = await Employee.findOne({ _id: targetEmployeeId, companyId, active: true }).lean();
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
 
+    let punchTime = new Date();
+    if (punch_time !== undefined && punch_time !== null && String(punch_time).trim()) {
+      const parsed = new Date(String(punch_time).trim());
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({ error: 'Invalid punch time' });
+      }
+      punchTime = parsed;
+    }
+    // #region agent log
+    if (typeof fetch === 'function') fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'manual-punch-date-time',hypothesisId:'H3',location:'controllers/punchController.js:createPunch',message:'resolved punchTime before write',data:{employeeId:String(emp._id),punchTimeIso:punchTime.toISOString()},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const punch = await Punch.create({
       companyId,
       employeeId: emp._id,
       employeeName: emp.name,
       punchType: punch_type,
-      punchTime: new Date(),
+      punchTime,
       notes: notes || null,
       createdBy: user.id,
     });

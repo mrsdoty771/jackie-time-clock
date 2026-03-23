@@ -423,6 +423,11 @@ function setupEventListeners() {
     document.getElementById('my-lunch-out-btn')?.addEventListener('click', () => handleManagerPunch('lunch_in'));
     // Manual punch
     document.getElementById('manual-punch-form')?.addEventListener('submit', handleManualPunch);
+    const now = new Date();
+    const manualDateEl = document.getElementById('manual-punch-date');
+    const manualTimeEl = document.getElementById('manual-punch-time');
+    if (manualDateEl && !manualDateEl.value) manualDateEl.value = now.toISOString().slice(0, 10);
+    if (manualTimeEl && !manualTimeEl.value) manualTimeEl.value = now.toTimeString().slice(0, 5);
     
     // Reports
     document.getElementById('generate-report-btn')?.addEventListener('click', generateReport);
@@ -1872,11 +1877,18 @@ function handleManualPunch(e) {
         showMessage('Please select an employee.', 'error');
         return;
     }
+    const punchDate = document.getElementById('manual-punch-date')?.value?.trim() || '';
+    const punchTimeOnly = document.getElementById('manual-punch-time')?.value?.trim() || '';
+    const manualPunchTime = (punchDate && punchTimeOnly) ? `${punchDate}T${punchTimeOnly}` : null;
     const punch = {
         employee_id: employeeId,
         punch_type: document.getElementById('punch-type').value,
-        notes: document.getElementById('punch-notes').value.trim() || null
+        notes: document.getElementById('punch-notes').value.trim() || null,
+        punch_time: manualPunchTime,
     };
+    // #region agent log
+    fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'manual-punch-date-time',hypothesisId:'H1',location:'public/app.js:handleManualPunch',message:'manual punch payload ready',data:{employeeId,punchType:punch.punch_type,punch_time:punch.punch_time,hasNotes:!!punch.notes},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     fetch(`${API_BASE}/punch`, {
         method: 'POST',
@@ -1898,6 +1910,11 @@ function handleManualPunch(e) {
                 document.getElementById('manual-punch-form').reset();
                 const select = document.getElementById('punch-employee');
                 if (select && select.options.length) select.selectedIndex = 0;
+                const now = new Date();
+                const dateEl = document.getElementById('manual-punch-date');
+                const timeEl = document.getElementById('manual-punch-time');
+                if (dateEl) dateEl.value = now.toISOString().slice(0, 10);
+                if (timeEl) timeEl.value = now.toTimeString().slice(0, 5);
             } else {
                 showMessage(data.error || 'Failed to record punch', 'error');
             }
