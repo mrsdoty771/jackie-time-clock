@@ -17,6 +17,8 @@ let companyPayWeekStartDay = 1;
 let companyPayWeekEndDay = 0;
 /** When super-admin has no linked employee, My Clock uses this company "Admin" employee id for punches and listing. */
 let myClockAdminEmployeeId = null;
+/** Employee-page time-history filter state. */
+let employeeHistoryRangeMode = 'this_week';
 
 // When any API returns 401 (e.g. idle timeout), show login and message
 function handleSessionExpired(message) {
@@ -314,6 +316,18 @@ function setupEventListeners() {
     document.getElementById('clock-out-btn')?.addEventListener('click', () => handlePunch('clock_out'));
     document.getElementById('lunch-in-btn')?.addEventListener('click', () => handlePunch('lunch_out'));
     document.getElementById('lunch-out-btn')?.addEventListener('click', () => handlePunch('lunch_in'));
+    document.getElementById('employee-history-toggle-btn')?.addEventListener('click', () => {
+        document.getElementById('employee-history-panel')?.classList.toggle('hidden');
+    });
+    document.getElementById('employee-history-range')?.addEventListener('change', (e) => {
+        const mode = e.target?.value || 'this_week';
+        employeeHistoryRangeMode = mode;
+        const customWrap = document.getElementById('employee-history-custom-dates');
+        if (customWrap) customWrap.classList.toggle('hidden', mode !== 'custom');
+    });
+    document.getElementById('employee-history-apply-btn')?.addEventListener('click', () => {
+        loadEmployeeRecords();
+    });
     
     // Manager tabs — use currentTarget so clicking the label/text still switches the tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -845,14 +859,70 @@ function handlePunch(punchType) {
     });
 }
 
+function formatDateInputValue(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function getEmployeeHistoryRangeSelection() {
+    const todayLocal = getLocalDateStringInTz(new Date(), companyTimezone);
+    const today = new Date(`${todayLocal}T12:00:00`);
+    const mondayStart = 1; // "This Week" and "Last Week" are calendar weeks (Mon-Sun)
+
+    if (employeeHistoryRangeMode === 'last_week') {
+        const thisWeekStart = getWeekStartDateForDate(today, mondayStart);
+        const start = new Date(thisWeekStart);
+        start.setDate(start.getDate() - 7);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        return {
+            startDate: formatDateInputValue(start),
+            endDate: formatDateInputValue(end),
+            label: 'Last Week',
+        };
+    }
+
+    if (employeeHistoryRangeMode === 'custom') {
+        const startDate = document.getElementById('employee-history-start-date')?.value || '';
+        const endDate = document.getElementById('employee-history-end-date')?.value || '';
+        if (!startDate || !endDate || startDate > endDate) return null;
+        return { startDate, endDate, label: 'Custom Dates' };
+    }
+
+    const start = getWeekStartDateForDate(today, mondayStart);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return {
+        startDate: formatDateInputValue(start),
+        endDate: formatDateInputValue(end),
+        label: 'This Week',
+    };
+}
+
 function loadEmployeeRecords() {
-    fetch(`${API_BASE}/punches`, {
+    const range = getEmployeeHistoryRangeSelection();
+    if (!range) {
+        showMessage('Please select a valid custom date range.', 'error');
+        return;
+    }
+    const currentLabel = document.getElementById('employee-history-current');
+    if (currentLabel) currentLabel.textContent = `Showing: ${range.label} (${range.startDate} to ${range.endDate})`;
+    const url = `${API_BASE}/punches?start_date=${encodeURIComponent(range.startDate)}&end_date=${encodeURIComponent(range.endDate)}`;
+    // #region agent log
+    fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'time-history',hypothesisId:'H1',location:'public/app.js:loadEmployeeRecords',message:'employee time history query range',data:{mode:employeeHistoryRangeMode,startDate:range.startDate,endDate:range.endDate,url},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    fetch(url, {
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
             displayEmployeeRecords(data);
             updatePunchButtonStates(data);
+            // #region agent log
+            fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'time-history',hypothesisId:'H2',location:'public/app.js:loadEmployeeRecords',message:'employee time history records loaded',data:{count:Array.isArray(data)?data.length:0},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
         })
         .catch(err => {
             console.error('Error loading records:', err);
