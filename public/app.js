@@ -915,9 +915,6 @@ function loadEmployeeRecords() {
     const currentLabel = document.getElementById('employee-history-current');
     if (currentLabel) currentLabel.textContent = `Showing: ${range.label} (${range.startDate} to ${range.endDate})`;
     const url = `${API_BASE}/punches?start_date=${encodeURIComponent(range.startDate)}&end_date=${encodeURIComponent(range.endDate)}`;
-    // #region agent log
-    fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'time-history',hypothesisId:'H1',location:'public/app.js:loadEmployeeRecords',message:'employee time history query range',data:{mode:employeeHistoryRangeMode,startDate:range.startDate,endDate:range.endDate,url},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     fetch(url, {
         credentials: 'include'
     })
@@ -925,9 +922,6 @@ function loadEmployeeRecords() {
         .then(data => {
             displayEmployeeRecords(data);
             updatePunchButtonStates(data);
-            // #region agent log
-            fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'time-history',hypothesisId:'H2',location:'public/app.js:loadEmployeeRecords',message:'employee time history records loaded',data:{count:Array.isArray(data)?data.length:0},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
         })
         .catch(err => {
             console.error('Error loading records:', err);
@@ -1342,10 +1336,58 @@ function loadEmployeesForEditPunches() {
         });
 }
 
+function parseTimeInputToMinutes(str) {
+    if (!str || !String(str).trim()) return null;
+    const segs = String(str).trim().split(':');
+    const h = parseInt(segs[0], 10);
+    const m = parseInt(segs[1] || '0', 10);
+    const s = parseInt(segs[2] || '0', 10);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m + Math.floor(s / 60);
+}
+
+/** Minutes since midnight for a Date in company timezone (for same-day filtering). */
+function getLocalTimeMinutesInTz(date, tz) {
+    const zone = (tz && String(tz).trim()) || companyTimezone || 'UTC';
+    const d = new Date(date);
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: zone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(d);
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    return hour * 60 + minute;
+}
+
+function filterEditPunchesByTimeOfDay(punches, dateStr, timeFromStr, timeToStr) {
+    if (!dateStr || (!timeFromStr && !timeToStr)) return punches;
+    const fromM = parseTimeInputToMinutes(timeFromStr);
+    const toM = parseTimeInputToMinutes(timeToStr);
+    if (fromM == null && toM == null) return punches;
+    const list = Array.isArray(punches) ? punches : [];
+    return list.filter((p) => {
+        const dayStr = getLocalDateStringInTz(p.punch_time, companyTimezone);
+        if (dayStr !== dateStr) return false;
+        const mins = getLocalTimeMinutesInTz(new Date(p.punch_time), companyTimezone);
+        if (fromM != null && mins < fromM) return false;
+        if (toM != null && mins > toM) return false;
+        return true;
+    });
+}
+
 function loadPunchesForEdit() {
     const employeeId = document.getElementById('edit-punches-employee').value;
     const date = document.getElementById('edit-punches-date').value;
-    
+    const timeFrom = document.getElementById('edit-punches-time-from')?.value?.trim() || '';
+    const timeTo = document.getElementById('edit-punches-time-to')?.value?.trim() || '';
+
+    if ((timeFrom || timeTo) && !date) {
+        showMessage('Select a Date to filter by time of day.', 'error');
+        return;
+    }
+
     let url = `${API_BASE}/punches?`;
     if (employeeId) {
         url += `employee_id=${employeeId}&`;
@@ -1353,13 +1395,14 @@ function loadPunchesForEdit() {
     if (date) {
         url += `start_date=${date}&end_date=${date}`;
     }
-    
+
     fetch(url, {
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
-            displayPunchesForEdit(data);
+            const filtered = filterEditPunchesByTimeOfDay(data, date, timeFrom, timeTo);
+            displayPunchesForEdit(filtered);
         })
         .catch(err => {
             showMessage('Error loading punches', 'error');
@@ -1376,6 +1419,11 @@ function displayPunchesForEdit(punches) {
     container.innerHTML = punches.slice(0, 50).map(punch => {
         const date = new Date(punch.punch_time);
         const typeClass = punch.punch_type.replace('_', '-');
+        const hasOrig = punch.original_punch_time != null && String(punch.original_punch_time).length > 0;
+        const wasAdjusted = hasOrig && new Date(punch.original_punch_time).getTime() !== new Date(punch.punch_time).getTime();
+        const origLine = wasAdjusted
+            ? `<div style="margin-top: 6px; font-size: 13px; color: #856404;"><strong>Originally:</strong> ${formatDateTime(new Date(punch.original_punch_time))}</div>`
+            : '';
         return `
             <div class="employee-card" style="margin-bottom: 15px;">
                 <div style="flex: 1;">
@@ -1383,6 +1431,7 @@ function displayPunchesForEdit(punches) {
                     <p>
                         <span class="record-type ${typeClass}">${formatPunchType(punch.punch_type)}</span>
                         <span style="margin-left: 15px;">${formatDateTime(date)}</span>
+                        ${origLine}
                         ${punch.notes ? `<div style="margin-top: 5px; color: #666;">Note: ${punch.notes}</div>` : ''}
                     </p>
                 </div>
@@ -1412,6 +1461,19 @@ function editPunch(id) {
             document.getElementById('edit-punch-date').value = dateStr;
             document.getElementById('edit-punch-time').value = timeStr;
             document.getElementById('edit-punch-notes').value = data.notes || '';
+            const origWrap = document.getElementById('edit-punch-original-wrap');
+            const origText = document.getElementById('edit-punch-original-text');
+            if (origWrap && origText) {
+                const hasOrig = data.original_punch_time != null && String(data.original_punch_time).length > 0;
+                const curT = data.punch_time ? new Date(data.punch_time).getTime() : 0;
+                const origT = hasOrig ? new Date(data.original_punch_time).getTime() : curT;
+                if (hasOrig && origT !== curT) {
+                    origText.textContent = formatDateTime(new Date(data.original_punch_time));
+                    origWrap.classList.remove('hidden');
+                } else {
+                    origWrap.classList.add('hidden');
+                }
+            }
             document.getElementById('edit-punch-modal').classList.remove('hidden');
         })
         .catch(() => showMessage('Error loading punch', 'error'));
@@ -1886,9 +1948,6 @@ function handleManualPunch(e) {
         notes: document.getElementById('punch-notes').value.trim() || null,
         punch_time: manualPunchTime,
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'manual-punch-date-time',hypothesisId:'H1',location:'public/app.js:handleManualPunch',message:'manual punch payload ready',data:{employeeId,punchType:punch.punch_type,punch_time:punch.punch_time,hasNotes:!!punch.notes},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     fetch(`${API_BASE}/punch`, {
         method: 'POST',

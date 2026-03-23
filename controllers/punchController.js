@@ -28,9 +28,6 @@ async function createPunch(req, res) {
   const companyId = req.companyId;
   const { employee_id, punch_type, notes, punch_time } = req.body;
   const user = req.session.user;
-  // #region agent log
-  if (typeof fetch === 'function') fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'manual-punch-date-time',hypothesisId:'H2',location:'controllers/punchController.js:createPunch',message:'createPunch request received',data:{role:user?.role||null,employee_id:employee_id||null,punch_type:punch_type||null,punch_time:punch_time||null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   const validTypes = ['clock_in', 'clock_out', 'lunch_in', 'lunch_out'];
   if (!validTypes.includes(punch_type)) {
@@ -68,15 +65,13 @@ async function createPunch(req, res) {
       }
       punchTime = parsed;
     }
-    // #region agent log
-    if (typeof fetch === 'function') fetch('http://127.0.0.1:7411/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'215ca4'},body:JSON.stringify({sessionId:'215ca4',runId:'manual-punch-date-time',hypothesisId:'H3',location:'controllers/punchController.js:createPunch',message:'resolved punchTime before write',data:{employeeId:String(emp._id),punchTimeIso:punchTime.toISOString()},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const punch = await Punch.create({
       companyId,
       employeeId: emp._id,
       employeeName: emp.name,
       punchType: punch_type,
       punchTime,
+      originalPunchTime: punchTime,
       notes: notes || null,
       createdBy: user.id,
     });
@@ -131,6 +126,7 @@ async function listPunches(req, res) {
         employee_name: p.employeeName || null,
         punch_type: p.punchType,
         punch_time: p.punchTime,
+        original_punch_time: p.originalPunchTime || null,
         notes: p.notes || null,
         created_by: p.createdBy ? String(p.createdBy) : null,
       }))
@@ -157,6 +153,7 @@ async function getPunch(req, res) {
       employee_name: punch.employeeName || null,
       punch_type: punch.punchType,
       punch_time: punch.punchTime,
+      original_punch_time: punch.originalPunchTime || null,
       notes: punch.notes || null,
     });
   } catch (err) {
@@ -185,6 +182,12 @@ async function updatePunch(req, res) {
     if (punch_time !== undefined) {
       const t = new Date(punch_time);
       if (Number.isNaN(t.getTime())) return res.status(400).json({ error: 'Invalid punch time' });
+      const oldMs = punch.punchTime ? new Date(punch.punchTime).getTime() : null;
+      if (oldMs != null && t.getTime() !== oldMs) {
+        if (punch.originalPunchTime == null) {
+          punch.originalPunchTime = punch.punchTime;
+        }
+      }
       punch.punchTime = t;
     }
     if (notes !== undefined) punch.notes = notes ? String(notes).trim() : null;

@@ -16,6 +16,8 @@ const PunchSchema = new mongoose.Schema(
       index: true,
     },
     punchTime: { type: Date, default: Date.now, index: true },
+    /** First recorded punch instant; stays fixed when a manager corrects punchTime. */
+    originalPunchTime: { type: Date },
 
     notes: { type: String },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
