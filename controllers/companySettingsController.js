@@ -16,11 +16,23 @@ async function getCompanySettings(req, res) {
 
   try {
     const settings = await CompanySettings.findOne({ companyId }).lean();
-    if (!settings) return res.json({ company_name: 'MVC', logo_data: null, timezone: 'UTC' });
+    if (!settings) {
+      return res.json({
+        company_name: 'MVC',
+        logo_data: null,
+        timezone: 'UTC',
+        pay_week_start_day: 1,
+        pay_week_end_day: 0,
+      });
+    }
+    const startDay = Number.isInteger(settings.payWeekStartDay) ? settings.payWeekStartDay : 1;
+    const endDay = Number.isInteger(settings.payWeekEndDay) ? settings.payWeekEndDay : 0;
     return res.json({
       company_name: settings.companyName || 'MVC',
       logo_data: settings.logoData || null,
       timezone: settings.timezone && String(settings.timezone).trim() ? String(settings.timezone).trim() : 'UTC',
+      pay_week_start_day: startDay,
+      pay_week_end_day: endDay,
     });
   } catch (err) {
     console.error('getCompanySettings error:', err);
@@ -33,13 +45,37 @@ async function updateCompanySettings(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  const { company_name, logo_data, timezone } = req.body;
+  const { company_name, logo_data, timezone, pay_week_start_day, pay_week_end_day } = req.body;
   if (!company_name || String(company_name).trim().length === 0) {
     return res.status(400).json({ error: 'Company name is required' });
   }
 
   try {
-    const update = { companyName: String(company_name).trim() };
+    const update = {
+      companyName: String(company_name).trim(),
+    };
+
+    if (pay_week_start_day !== undefined && pay_week_start_day !== null) {
+      const startDay = parseInt(pay_week_start_day, 10);
+      if (Number.isNaN(startDay) || startDay < 0 || startDay > 6) {
+        return res.status(400).json({ error: 'Pay week start day must be 0 (Sunday) through 6 (Saturday)' });
+      }
+      let endDay = (startDay + 6) % 7;
+      if (pay_week_end_day !== undefined && pay_week_end_day !== null) {
+        const parsedEnd = parseInt(pay_week_end_day, 10);
+        if (Number.isNaN(parsedEnd) || parsedEnd < 0 || parsedEnd > 6) {
+          return res.status(400).json({ error: 'Pay week end day must be 0 (Sunday) through 6 (Saturday)' });
+        }
+        endDay = parsedEnd;
+      }
+      if (endDay !== (startDay + 6) % 7) {
+        return res.status(400).json({
+          error: 'Pay week must be exactly 7 consecutive days (end day must be six days after start day)',
+        });
+      }
+      update.payWeekStartDay = startDay;
+      update.payWeekEndDay = endDay;
+    }
     if (logo_data !== undefined) {
       update.logoData = logo_data && String(logo_data).trim().length > 0 ? String(logo_data).trim() : null;
     }
@@ -53,11 +89,15 @@ async function updateCompanySettings(req, res) {
       { upsert: true, new: true }
     ).lean();
 
+    const uStart = Number.isInteger(updated.payWeekStartDay) ? updated.payWeekStartDay : 1;
+    const uEnd = Number.isInteger(updated.payWeekEndDay) ? updated.payWeekEndDay : 0;
     return res.json({
       success: true,
       company_name: updated.companyName,
       logo_data: updated.logoData || null,
       timezone: updated.timezone && String(updated.timezone).trim() ? String(updated.timezone).trim() : 'UTC',
+      pay_week_start_day: uStart,
+      pay_week_end_day: uEnd,
     });
   } catch (err) {
     console.error('updateCompanySettings error:', err);

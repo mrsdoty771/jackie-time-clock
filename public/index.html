@@ -367,6 +367,33 @@
                         </small>
                     </div>
                     <div class="form-group">
+                        <label for="pay-week-start">Pay week starts on</label>
+                        <select id="pay-week-start">
+                            <option value="0">Sunday</option>
+                            <option value="1" selected>Monday</option>
+                            <option value="2">Tuesday</option>
+                            <option value="3">Wednesday</option>
+                            <option value="4">Thursday</option>
+                            <option value="5">Friday</option>
+                            <option value="6">Saturday</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="pay-week-end">Pay week ends on</label>
+                        <select id="pay-week-end">
+                            <option value="0" selected>Sunday</option>
+                            <option value="1">Monday</option>
+                            <option value="2">Tuesday</option>
+                            <option value="3">Wednesday</option>
+                            <option value="4">Thursday</option>
+                            <option value="5">Friday</option>
+                            <option value="6">Saturday</option>
+                        </select>
+                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
+                            Must be seven consecutive days (e.g. Monday–Sunday). Changing start updates end automatically.
+                        </small>
+                    </div>
+                    <div class="form-group">
                         <label>Dashboard Logo</label>
                         <p style="color: #666; font-size: 12px; margin-bottom: 8px;">Shown at the top of the manager dashboard. Leave empty to show company name.</p>
                         <div class="logo-upload-area">

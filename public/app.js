@@ -12,6 +12,9 @@ let loginOptions = { superAdmin: null };
 let lastReportData = null;
 /** Company timezone (IANA, e.g. America/New_York). Set after login via loadCompanyTimezone(). */
 let companyTimezone = 'UTC';
+/** Pay week boundaries (0=Sun … 6=Sat, same as Date.getDay()). Defaults Monday–Sunday. */
+let companyPayWeekStartDay = 1;
+let companyPayWeekEndDay = 0;
 /** When super-admin has no linked employee, My Clock uses this company "Admin" employee id for punches and listing. */
 let myClockAdminEmployeeId = null;
 
@@ -80,16 +83,36 @@ function getLoginCompanyId() {
     return LOGIN_COMPANY_ID;
 }
 
+/** Start date of the pay week containing `date`, for a week that begins on weekStartDay (0–6). */
+function getWeekStartDateForDate(date, weekStartDay) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const day = d.getDay();
+    const diff = (day - weekStartDay + 7) % 7;
+    d.setDate(d.getDate() - diff);
+    return d;
+}
+
 function initializeWeekStart() {
+    const weekStart = typeof companyPayWeekStartDay === 'number' && !Number.isNaN(companyPayWeekStartDay)
+        ? companyPayWeekStartDay
+        : 1;
     const today = new Date();
-    const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(today.setDate(diff));
-    document.getElementById('report-start-date').value = monday.toISOString().split('T')[0];
-    
-    const endDate = new Date(monday);
+    const start = getWeekStartDateForDate(today, weekStart);
+    const endDate = new Date(start);
     endDate.setDate(endDate.getDate() + 6);
-    document.getElementById('report-end-date').value = endDate.toISOString().split('T')[0];
+    const rs = document.getElementById('report-start-date');
+    const re = document.getElementById('report-end-date');
+    if (rs) rs.value = start.toISOString().split('T')[0];
+    if (re) re.value = endDate.toISOString().split('T')[0];
+}
+
+function syncPayWeekEndFromStart() {
+    const sel = document.getElementById('pay-week-start');
+    const endSel = document.getElementById('pay-week-end');
+    if (!sel || !endSel) return;
+    const start = parseInt(sel.value, 10);
+    if (Number.isNaN(start)) return;
+    endSel.value = String((start + 6) % 7);
 }
 
 // Authentication
@@ -149,14 +172,39 @@ function loadManagerNavCompanyName() {
         .catch(() => { el.textContent = 'Company'; });
 }
 
+function applyCompanyPayWeekFromSettings(data) {
+    if (!data) return;
+    const s = data.pay_week_start_day;
+    const e = data.pay_week_end_day;
+    const start = s !== undefined && s !== null && !Number.isNaN(parseInt(s, 10))
+        ? parseInt(s, 10)
+        : 1;
+    const end = e !== undefined && e !== null && !Number.isNaN(parseInt(e, 10))
+        ? parseInt(e, 10)
+        : (start + 6) % 7;
+    companyPayWeekStartDay = start;
+    companyPayWeekEndDay = end;
+    const ps = document.getElementById('pay-week-start');
+    const pe = document.getElementById('pay-week-end');
+    if (ps) ps.value = String(start);
+    if (pe) pe.value = String(end);
+}
+
 function loadCompanyTimezone() {
     fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
             const tz = (data && data.timezone && String(data.timezone).trim()) ? data.timezone : 'UTC';
             companyTimezone = tz;
+            applyCompanyPayWeekFromSettings(data);
+            initializeWeekStart();
         })
-        .catch(() => { companyTimezone = 'UTC'; });
+        .catch(() => {
+            companyTimezone = 'UTC';
+            companyPayWeekStartDay = 1;
+            companyPayWeekEndDay = 0;
+            initializeWeekStart();
+        });
 }
 
 function showPage(role) {
@@ -376,6 +424,7 @@ function setupEventListeners() {
     
     // Company Settings
     document.getElementById('company-settings-form')?.addEventListener('submit', handleCompanySettings);
+    document.getElementById('pay-week-start')?.addEventListener('change', syncPayWeekEndFromStart);
     document.getElementById('company-logo-choose')?.addEventListener('click', () => document.getElementById('company-logo-input')?.click());
     document.getElementById('company-logo-input')?.addEventListener('change', function () {
         const file = this.files?.[0];
@@ -2192,6 +2241,7 @@ function loadCompanySettings() {
                 if (preview) preview.src = '';
                 if (wrap) wrap.classList.add('hidden');
             }
+            applyCompanyPayWeekFromSettings(data);
         })
         .catch(err => {
             console.error('Error loading company settings:', err);
@@ -2386,6 +2436,8 @@ function handleCompanySettings(e) {
     const companyName = document.getElementById('company-name').value.trim();
     const logoData = document.getElementById('company-logo-data')?.value?.trim() || '';
     const timezone = document.getElementById('company-timezone')?.value?.trim() || 'UTC';
+    const payWeekStart = parseInt(document.getElementById('pay-week-start')?.value, 10);
+    const payWeekEnd = parseInt(document.getElementById('pay-week-end')?.value, 10);
     const messageDiv = document.getElementById('company-settings-message');
     if (!companyName) {
         if (messageDiv) messageDiv.innerHTML = '<p style="color: red;">Company name is required</p>';
@@ -2394,13 +2446,24 @@ function handleCompanySettings(e) {
     fetch(`${API_BASE}/company-settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName, logo_data: logoData || null, timezone }),
+        body: JSON.stringify({
+            company_name: companyName,
+            logo_data: logoData || null,
+            timezone,
+            pay_week_start_day: Number.isNaN(payWeekStart) ? 1 : payWeekStart,
+            pay_week_end_day: Number.isNaN(payWeekEnd) ? 0 : payWeekEnd,
+        }),
         credentials: 'include'
     })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
                 if (data.timezone) companyTimezone = data.timezone;
+                if (data.pay_week_start_day !== undefined && data.pay_week_start_day !== null) {
+                    companyPayWeekStartDay = data.pay_week_start_day;
+                    companyPayWeekEndDay = data.pay_week_end_day;
+                    initializeWeekStart();
+                }
                 if (messageDiv) messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page and dashboard will update.</p>';
                 updateLoginPageTitle(data.company_name);
                 loadManagerNavCompanyName();
