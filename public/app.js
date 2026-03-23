@@ -182,7 +182,7 @@ function showPage(role) {
 function updateEmployeeNameDisplay() {
     // If we have employee_name, use it
     if (currentUser.employee_name) {
-        document.getElementById('employee-name').textContent = 'Hello ' + currentUser.employee_name;
+        document.getElementById('employee-name').textContent = 'Hello, ' + currentUser.employee_name;
         return;
     }
     
@@ -196,20 +196,20 @@ function updateEmployeeNameDisplay() {
                 if (data && data.length > 0) {
                     const employee = data.find(emp => emp.id === currentUser.employee_id) || data[0];
                     if (employee && employee.name) {
-                        document.getElementById('employee-name').textContent = 'Hello ' + employee.name;
+                        document.getElementById('employee-name').textContent = 'Hello, ' + employee.name;
                         currentUser.employee_name = employee.name;
                     } else {
-                        document.getElementById('employee-name').textContent = 'Hello Employee';
+                        document.getElementById('employee-name').textContent = 'Hello, Employee';
                     }
                 } else {
-                    document.getElementById('employee-name').textContent = 'Hello Employee';
+                    document.getElementById('employee-name').textContent = 'Hello, Employee';
                 }
             })
             .catch(() => {
-                document.getElementById('employee-name').textContent = 'Hello Employee';
+                document.getElementById('employee-name').textContent = 'Hello, Employee';
             });
     } else {
-        document.getElementById('employee-name').textContent = 'Hello Employee';
+        document.getElementById('employee-name').textContent = 'Hello, Employee';
     }
 }
 
