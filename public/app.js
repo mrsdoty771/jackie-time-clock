@@ -2380,11 +2380,31 @@ function loadCompanySettings() {
                 if (preview) preview.src = '';
                 if (wrap) wrap.classList.add('hidden');
             }
+            loadCompanyAdminEmployeeDropdown(data.company_admin_employee_id || null);
             applyCompanyPayWeekFromSettings(data);
         })
         .catch(err => {
             console.error('Error loading company settings:', err);
         });
+}
+
+function loadCompanyAdminEmployeeDropdown(selectedEmployeeId) {
+    const sel = document.getElementById('company-admin-employee');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— None —</option>';
+    fetch(`${API_BASE}/employees`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            const list = Array.isArray(data) ? data : [];
+            list.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.id || emp._id;
+                opt.textContent = (emp.name || 'Employee') + (emp.employee_number ? ` (# ${emp.employee_number})` : '');
+                sel.appendChild(opt);
+            });
+            if (selectedEmployeeId) sel.value = String(selectedEmployeeId);
+        })
+        .catch(() => {});
 }
 
 function loadManagerProfile() {
@@ -2574,6 +2594,7 @@ function handleCompanySettings(e) {
     e.preventDefault();
     const companyName = document.getElementById('company-name').value.trim();
     const logoData = document.getElementById('company-logo-data')?.value?.trim() || '';
+    const companyAdminEmployeeId = document.getElementById('company-admin-employee')?.value?.trim() || '';
     const timezone = document.getElementById('company-timezone')?.value?.trim() || 'UTC';
     const payWeekStart = parseInt(document.getElementById('pay-week-start')?.value, 10);
     const payWeekEnd = parseInt(document.getElementById('pay-week-end')?.value, 10);
@@ -2588,6 +2609,7 @@ function handleCompanySettings(e) {
         body: JSON.stringify({
             company_name: companyName,
             logo_data: logoData || null,
+            company_admin_employee_id: companyAdminEmployeeId || null,
             timezone,
             pay_week_start_day: Number.isNaN(payWeekStart) ? 1 : payWeekStart,
             pay_week_end_day: Number.isNaN(payWeekEnd) ? 0 : payWeekEnd,
