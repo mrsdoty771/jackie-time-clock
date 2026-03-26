@@ -440,8 +440,6 @@ function setupEventListeners() {
     // Auto-load punches when both employee + date are selected
     const editEmpEl = document.getElementById('edit-punches-employee');
     const editDateEl = document.getElementById('edit-punches-date');
-    const editFromEl = document.getElementById('edit-punches-time-from');
-    const editToEl = document.getElementById('edit-punches-time-to');
     const editListEl = document.getElementById('edit-punches-list');
     let editPunchesAutoLoadTimer = null;
     const maybeAutoLoadEditPunches = () => {
@@ -459,9 +457,6 @@ function setupEventListeners() {
     };
     editEmpEl?.addEventListener('change', maybeAutoLoadEditPunches);
     editDateEl?.addEventListener('change', maybeAutoLoadEditPunches);
-    // Time filters are optional, but if user changes them we re-load + re-filter
-    editFromEl?.addEventListener('change', maybeAutoLoadEditPunches);
-    editToEl?.addEventListener('change', maybeAutoLoadEditPunches);
     document.getElementById('edit-punch-form')?.addEventListener('submit', handleEditPunchSubmit);
     document.getElementById('cancel-edit-punch-btn')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
     document.querySelector('.close-edit-punch')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
@@ -1383,57 +1378,9 @@ function loadEmployeesForEditPunches() {
         });
 }
 
-function parseTimeInputToMinutes(str) {
-    if (!str || !String(str).trim()) return null;
-    const segs = String(str).trim().split(':');
-    const h = parseInt(segs[0], 10);
-    const m = parseInt(segs[1] || '0', 10);
-    const s = parseInt(segs[2] || '0', 10);
-    if (Number.isNaN(h) || Number.isNaN(m)) return null;
-    return h * 60 + m + Math.floor(s / 60);
-}
-
-/** Minutes since midnight for a Date in company timezone (for same-day filtering). */
-function getLocalTimeMinutesInTz(date, tz) {
-    const zone = (tz && String(tz).trim()) || companyTimezone || 'UTC';
-    const d = new Date(date);
-    const parts = new Intl.DateTimeFormat('en-GB', {
-        timeZone: zone,
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    }).formatToParts(d);
-    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
-    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
-    return hour * 60 + minute;
-}
-
-function filterEditPunchesByTimeOfDay(punches, dateStr, timeFromStr, timeToStr) {
-    if (!dateStr || (!timeFromStr && !timeToStr)) return punches;
-    const fromM = parseTimeInputToMinutes(timeFromStr);
-    const toM = parseTimeInputToMinutes(timeToStr);
-    if (fromM == null && toM == null) return punches;
-    const list = Array.isArray(punches) ? punches : [];
-    return list.filter((p) => {
-        const dayStr = getLocalDateStringInTz(p.punch_time, companyTimezone);
-        if (dayStr !== dateStr) return false;
-        const mins = getLocalTimeMinutesInTz(new Date(p.punch_time), companyTimezone);
-        if (fromM != null && mins < fromM) return false;
-        if (toM != null && mins > toM) return false;
-        return true;
-    });
-}
-
 function loadPunchesForEdit() {
     const employeeId = document.getElementById('edit-punches-employee').value;
     const date = document.getElementById('edit-punches-date').value;
-    const timeFrom = document.getElementById('edit-punches-time-from')?.value?.trim() || '';
-    const timeTo = document.getElementById('edit-punches-time-to')?.value?.trim() || '';
-
-    if ((timeFrom || timeTo) && !date) {
-        showMessage('Select a Date to filter by time of day.', 'error');
-        return;
-    }
 
     let url = `${API_BASE}/punches?`;
     if (employeeId) {
@@ -1448,8 +1395,7 @@ function loadPunchesForEdit() {
     })
         .then(res => res.json())
         .then(data => {
-            const filtered = filterEditPunchesByTimeOfDay(data, date, timeFrom, timeTo);
-            displayPunchesForEdit(filtered);
+            displayPunchesForEdit(data);
         })
         .catch(err => {
             showMessage('Error loading punches', 'error');
