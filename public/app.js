@@ -437,6 +437,31 @@ function setupEventListeners() {
     // Edit Punches
     document.getElementById('load-punches-btn')?.addEventListener('click', loadPunchesForEdit);
     document.getElementById('refresh-punches-btn')?.addEventListener('click', loadPunchesForEdit);
+    // Auto-load punches when both employee + date are selected
+    const editEmpEl = document.getElementById('edit-punches-employee');
+    const editDateEl = document.getElementById('edit-punches-date');
+    const editFromEl = document.getElementById('edit-punches-time-from');
+    const editToEl = document.getElementById('edit-punches-time-to');
+    const editListEl = document.getElementById('edit-punches-list');
+    let editPunchesAutoLoadTimer = null;
+    const maybeAutoLoadEditPunches = () => {
+        const employeeId = editEmpEl?.value || '';
+        const date = editDateEl?.value || '';
+        if (!employeeId || !date) {
+            if (editListEl) editListEl.innerHTML = '<p style="color:#666;">Select an <strong>Employee</strong> and a <strong>Date</strong> to view existing punches.</p>';
+            return;
+        }
+        // Debounce quick changes (employee/date/time fields)
+        if (editPunchesAutoLoadTimer) clearTimeout(editPunchesAutoLoadTimer);
+        editPunchesAutoLoadTimer = setTimeout(() => {
+            loadPunchesForEdit();
+        }, 150);
+    };
+    editEmpEl?.addEventListener('change', maybeAutoLoadEditPunches);
+    editDateEl?.addEventListener('change', maybeAutoLoadEditPunches);
+    // Time filters are optional, but if user changes them we re-load + re-filter
+    editFromEl?.addEventListener('change', maybeAutoLoadEditPunches);
+    editToEl?.addEventListener('change', maybeAutoLoadEditPunches);
     document.getElementById('edit-punch-form')?.addEventListener('submit', handleEditPunchSubmit);
     document.getElementById('cancel-edit-punch-btn')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
     document.querySelector('.close-edit-punch')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
