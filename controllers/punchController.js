@@ -5,6 +5,68 @@ const { getCompanyTimezone, getUtcRangeForLocalDate } = require('../utils/timezo
 
 const ADMIN_EMPLOYEE_NUMBER = 'ADMIN';
 
+function getLocalDateStringInTz(date, tz) {
+  const dt = new Date(date);
+  if (Number.isNaN(dt.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(dt);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const m = parts.find((p) => p.type === 'month')?.value;
+  const d = parts.find((p) => p.type === 'day')?.value;
+  if (!y || !m || !d) return null;
+  return `${y}-${m}-${d}`;
+}
+
+async function ensureNoDuplicatePunchTypeForLocalDay({
+  companyId,
+  employeeId,
+  punchType,
+  punchTime,
+  excludePunchId = null,
+}) {
+  const tz = await getCompanyTimezone(companyId);
+  const localDateStr = getLocalDateStringInTz(punchTime, tz);
+  if (!localDateStr) {
+    const err = new Error('Invalid punch time');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const { startUtc, endUtc } = getUtcRangeForLocalDate(localDateStr, tz);
+  // Backward-compatible duplicate detection:
+  // - Preferred path: punchLocalDate matches
+  // - Legacy path: older rows without punchLocalDate, compare by local-day UTC range
+  const filter = {
+    companyId,
+    employeeId,
+    punchType,
+    $or: [
+      { punchLocalDate: localDateStr },
+      {
+        $and: [
+          { $or: [{ punchLocalDate: { $exists: false } }, { punchLocalDate: null }, { punchLocalDate: '' }] },
+          { punchTime: { $gte: startUtc, $lte: endUtc } },
+        ],
+      },
+    ],
+  };
+  if (excludePunchId) {
+    filter._id = { $ne: excludePunchId };
+  }
+  const existing = await Punch.findOne(filter).select({ _id: 1, punchTime: 1 }).lean();
+  if (existing) {
+    const err = new Error('Duplicate punch: this punch type was already recorded for that day.');
+    err.statusCode = 409;
+    err.code = 'DUPLICATE_PUNCH_TYPE_FOR_DAY';
+    err.existingPunchId = String(existing._id);
+    throw err;
+  }
+}
+
 /** Get or create the company's "Admin" employee used for super-admin My Clock when not linked to a personal employee. */
 async function getOrCreateAdminEmployee(companyId) {
   let emp = await Employee.findOne({ companyId, employeeNumber: ADMIN_EMPLOYEE_NUMBER }).lean();
@@ -65,12 +127,25 @@ async function createPunch(req, res) {
       }
       punchTime = parsed;
     }
+
+    // Enforce: only one of each punch type per employee per local day (company timezone)
+    await ensureNoDuplicatePunchTypeForLocalDay({
+      companyId,
+      employeeId: emp._id,
+      punchType: punch_type,
+      punchTime,
+    });
+
+    const tz = await getCompanyTimezone(companyId);
+    const punchLocalDate = getLocalDateStringInTz(punchTime, tz);
+
     const punch = await Punch.create({
       companyId,
       employeeId: emp._id,
       employeeName: emp.name,
       punchType: punch_type,
       punchTime,
+      punchLocalDate,
       originalPunchTime: punchTime,
       notes: notes || null,
       createdBy: user.id,
@@ -80,6 +155,12 @@ async function createPunch(req, res) {
 
     return res.json({ success: true, id: String(punch._id) });
   } catch (err) {
+    if (err && err.code === 11000) {
+      return res.status(409).json({ error: 'Duplicate punch: this punch type was already recorded for that day.', code: 'DUPLICATE_PUNCH_TYPE_FOR_DAY' });
+    }
+    if (err && err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message, code: err.code, existing_punch_id: err.existingPunchId });
+    }
     console.error('createPunch error:', err);
     return res.status(500).json({ error: 'Database error' });
   }
@@ -175,6 +256,9 @@ async function updatePunch(req, res) {
     if (!punch) return res.status(404).json({ error: 'Punch not found' });
 
     const validTypes = ['clock_in', 'clock_out', 'lunch_in', 'lunch_out'];
+    const nextPunchType = punch_type !== undefined ? punch_type : punch.punchType;
+    const nextPunchTime = punch_time !== undefined ? new Date(punch_time) : new Date(punch.punchTime);
+
     if (punch_type !== undefined) {
       if (!validTypes.includes(punch_type)) return res.status(400).json({ error: 'Invalid punch type' });
       punch.punchType = punch_type;
@@ -192,9 +276,28 @@ async function updatePunch(req, res) {
     }
     if (notes !== undefined) punch.notes = notes ? String(notes).trim() : null;
 
+    // Enforce: only one of each punch type per employee per local day (company timezone)
+    await ensureNoDuplicatePunchTypeForLocalDay({
+      companyId,
+      employeeId: punch.employeeId,
+      punchType: nextPunchType,
+      punchTime: nextPunchTime,
+      excludePunchId: punch._id,
+    });
+
+    const tz = await getCompanyTimezone(companyId);
+    const nextLocalDate = getLocalDateStringInTz(nextPunchTime, tz);
+    punch.punchLocalDate = nextLocalDate;
+
     await punch.save();
     return res.json({ success: true });
   } catch (err) {
+    if (err && err.code === 11000) {
+      return res.status(409).json({ error: 'Duplicate punch: this punch type was already recorded for that day.', code: 'DUPLICATE_PUNCH_TYPE_FOR_DAY' });
+    }
+    if (err && err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message, code: err.code, existing_punch_id: err.existingPunchId });
+    }
     console.error('updatePunch error:', err);
     return res.status(500).json({ error: 'Database error' });
   }

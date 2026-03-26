@@ -856,9 +856,16 @@ function handlePunch(punchType) {
         }),
         credentials: 'include'
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
+    .then(async (res) => {
+        const text = await res.text();
+        let data = {};
+        try {
+            if (text.trim()) data = JSON.parse(text);
+        } catch (_) {}
+        return { ok: res.ok, status: res.status, data };
+    })
+    .then(({ ok, status, data }) => {
+        if (ok && data.success) {
             // Get employee name for personalized messages (just first name)
             const fullName = currentUser?.employee_name || currentUser?.username || 'Employee';
             const firstName = getFirstName(fullName);
@@ -881,7 +888,11 @@ function handlePunch(punchType) {
             }
             loadEmployeeRecords();
         } else {
-            showMessage(data.error || 'Failed to record punch', 'error');
+            if (status === 409 || data.code === 'DUPLICATE_PUNCH_TYPE_FOR_DAY') {
+                showMessage(data.error || 'Duplicate punch for that day.', 'error');
+            } else {
+                showMessage(data.error || 'Failed to record punch', 'error');
+            }
         }
     })
     .catch(err => {
@@ -1210,14 +1221,25 @@ function handleManagerPunch(punchType) {
         body: JSON.stringify({ punch_type: punchType, notes: notes || null }),
         credentials: 'include'
     })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim()) data = JSON.parse(text);
+            } catch (_) {}
+            return { ok: res.ok, status: res.status, data };
+        })
+        .then(({ ok, status, data }) => {
+            if (ok && data.success) {
                 showMessage('Punch recorded.', 'success');
                 if (noteEl) noteEl.value = '';
                 loadMyClockPunches();
             } else {
-                showMessage(data.error || 'Failed to record punch', 'error');
+                if (status === 409 || data.code === 'DUPLICATE_PUNCH_TYPE_FOR_DAY') {
+                    showMessage(data.error || 'Duplicate punch for that day.', 'error');
+                } else {
+                    showMessage(data.error || 'Failed to record punch', 'error');
+                }
             }
         })
         .catch(() => showMessage('Error recording punch', 'error'));

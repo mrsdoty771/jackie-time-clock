@@ -9,6 +9,9 @@ const PunchSchema = new mongoose.Schema(
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
     employeeName: { type: String }, // optional snapshot for faster reads
 
+    /** Local date (YYYY-MM-DD) in the company's timezone; used for de-dupe rules. */
+    punchLocalDate: { type: String, index: true },
+
     punchType: {
       type: String,
       required: true,
@@ -23,6 +26,17 @@ const PunchSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
+);
+
+// Enforce: only one of each punch type per employee per company per local day
+PunchSchema.index(
+  { companyId: 1, employeeId: 1, punchType: 1, punchLocalDate: 1 },
+  {
+    unique: true,
+    name: 'uniq_punch_type_per_day',
+    // Allow existing legacy rows (missing punchLocalDate) while enforcing all new/updated rows.
+    partialFilterExpression: { punchLocalDate: { $exists: true, $type: 'string' } },
+  }
 );
 
 module.exports = mongoose.model('Punch', PunchSchema);

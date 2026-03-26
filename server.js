@@ -24,6 +24,7 @@ const reportsRoutes = require('./routes/reportsRoutes');
 const bcrypt = require('bcryptjs');
 const User = require('./models/User');
 const CompanySettings = require('./models/CompanySettings');
+const Punch = require('./models/Punch');
 
 // 5. Middleware Setup
 app.set('trust proxy', 1);
@@ -100,6 +101,12 @@ app.listen(PORT, '0.0.0.0', () => {
   mongoose.connect(url, { serverSelectionTimeoutMS: 10000 })
     .then(async () => {
       console.log('Connected to MongoDB');
+      try {
+        // Ensure punch indexes (including duplicate-prevention index) are created.
+        await Punch.createIndexes();
+      } catch (idxErr) {
+        console.error('Punch index creation warning:', idxErr?.message || idxErr);
+      }
       // Ensure default manager users exist if env vars are set
       const companyId = String(process.env.DEFAULT_COMPANY_ID || '').trim();
       const forceRecreate = process.env.FORCE_RECREATE_MANAGERS === 'true';
