@@ -124,7 +124,7 @@ async function getEmployee(req, res) {
   try {
     const employee = await Employee.findOne({ _id: id, companyId }).lean();
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    const user = await User.findOne({ companyId, employeeId: employee._id, role: 'employee' }).select('passwordDisplayEncrypted').lean();
+    const user = await User.findOne({ companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } }).select('passwordDisplayEncrypted').lean();
     let password = '';
     if (user && user.passwordDisplayEncrypted) {
       try {
@@ -284,7 +284,7 @@ async function updateEmployee(req, res) {
     }
     if (Object.keys(userUpdates).length > 0) {
       const result = await User.updateOne(
-        { companyId, employeeId: employee._id, role: 'employee' },
+        { companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } },
         { $set: userUpdates }
       );
       if (result.matchedCount === 0 && Object.keys(userUpdates).length > 0) {
@@ -323,7 +323,7 @@ async function setEmployeePassword(req, res) {
 
     const hashed = bcrypt.hashSync(String(password), 10);
     const result = await User.updateOne(
-      { companyId, employeeId: employee._id, role: 'employee' },
+      { companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } },
       { $set: { password: hashed } }
     );
 

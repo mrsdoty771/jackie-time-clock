@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
+const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
 
 function normalizeCompanyId(raw) {
@@ -296,7 +297,8 @@ function getLoginOptions(req, res) {
         return Promise.all([
           Employee.find({ companyId, active: true }).select('_id name').lean(),
           Employee.find({ companyId, active: false }).select('name').lean(),
-        ]).then(([employees, inactiveEmployees]) => {
+          CompanySettings.findOne({ companyId }).select('companyAdminEmployeeId').lean(),
+        ]).then(([employees, inactiveEmployees, settings]) => {
             const employeeIds = (employees || []).map((e) => e._id);
             return User.find({
               companyId,
@@ -324,10 +326,24 @@ function getLoginOptions(req, res) {
                 const inactiveNamesLower = new Set(
                   (inactiveEmployees || []).map((e) => (e.name || '').trim().toLowerCase()).filter(Boolean)
                 );
+                const companyAdminEmployeeId = settings?.companyAdminEmployeeId
+                  ? String(settings.companyAdminEmployeeId)
+                  : '';
+                const employeeById = new Map((employees || []).map((e) => [String(e._id), e]));
+                const companyAdminEmployeeName = companyAdminEmployeeId && employeeById.get(companyAdminEmployeeId)
+                  ? String(employeeById.get(companyAdminEmployeeId).name || '').trim()
+                  : '';
                 let managerList = (users || [])
                   .map((u) => ({
                     username: u.username,
-                    name: u.name || u.username,
+                    name: (() => {
+                      const rawName = String(u.name || '').trim();
+                      if (rawName) return rawName;
+                      if (String(u.username || '').trim().toLowerCase() === 'admin' && companyAdminEmployeeName) {
+                        return companyAdminEmployeeName;
+                      }
+                      return u.username;
+                    })(),
                   }))
                   .filter(
                     (m) =>
