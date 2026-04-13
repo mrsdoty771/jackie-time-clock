@@ -1,3 +1,5 @@
+const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
@@ -9,6 +11,24 @@ function normalizeCompanyId(raw) {
   const companyId = String(raw || '').trim();
   return companyId.length ? companyId : null;
 }
+
+// #region agent log
+function debugAgentLog(hypothesisId, message, data) {
+  try {
+    fs.appendFileSync(
+      path.join(__dirname, '..', 'debug-46914f.log'),
+      JSON.stringify({
+        sessionId: '46914f',
+        hypothesisId,
+        location: 'authController.js:login',
+        message,
+        data: data || {},
+        timestamp: Date.now(),
+      }) + '\n'
+    );
+  } catch (_e) {}
+}
+// #endregion
 
 function looksLikeEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
@@ -91,6 +111,9 @@ async function login(req, res) {
   try {
     const { user, employeeName } = await resolveUserByIdentifier(companyId, loginName);
     if (!user) {
+      // #region agent log
+      debugAgentLog('H1-login-401', 'login returned 401 user not found', { reason: 'user_not_found' });
+      // #endregion
       return res.status(401).json({ error: 'User not found. Check your username or email and company.' });
     }
 
@@ -104,6 +127,9 @@ async function login(req, res) {
       });
     }
     if (!passwordMatch) {
+      // #region agent log
+      debugAgentLog('H1-login-401', 'login returned 401 wrong password', { reason: 'wrong_password' });
+      // #endregion
       return res.status(401).json({ error: 'Wrong password. Please try again.' });
     }
 

@@ -37,6 +37,23 @@ window.fetch = function (url) {
     const urlStr = typeof url === 'string' ? url : (url && url.url) || '';
     const isApi = urlStr.indexOf(API_BASE) !== -1;
     return _originalFetch.apply(this, arguments).then(function (res) {
+        // #region agent log
+        if (isApi && res.status === 401) {
+            var _path = (urlStr.split('?')[0] || '').replace(/^.*\/api/, '/api') || urlStr;
+            fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '46914f' },
+                body: JSON.stringify({
+                    sessionId: '46914f',
+                    hypothesisId: _path.indexOf('/api/login') !== -1 ? 'H1-login-401' : _path.indexOf('/api/me') !== -1 ? 'H2-me-401' : 'H4-other-401',
+                    location: 'app.js:fetch-wrap',
+                    message: 'API returned 401; global handler will show idle banner',
+                    data: { urlSnippet: urlStr.slice(0, 120), pathGuess: _path },
+                    timestamp: Date.now()
+                })
+            }).catch(function () {});
+        }
+        // #endregion
         if (isApi && res.status === 401) {
             handleSessionExpired('Session expired due to inactivity. Please log in again.');
         }

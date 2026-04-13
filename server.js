@@ -8,6 +8,7 @@ const session = require('express-session');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const fs = require('fs');
 
 // 3. Initialize the app
 const app = express();
@@ -57,6 +58,27 @@ app.use('/api', (req, res, next) => {
   const now = Date.now();
   const last = req.session.lastActivity;
   if (last != null && now - last > IDLE_TIMEOUT_MS) {
+    // #region agent log
+    try {
+      fs.appendFileSync(
+        path.join(__dirname, 'debug-46914f.log'),
+        JSON.stringify({
+          sessionId: '46914f',
+          hypothesisId: 'H3-idle-middleware',
+          location: 'server.js:idle-timeout',
+          message: 'Session destroyed for idle timeout',
+          data: {
+            apiPath: req.originalUrl && String(req.originalUrl).split('?')[0],
+            lastActivity: last,
+            now,
+            deltaMs: now - last,
+            thresholdMs: IDLE_TIMEOUT_MS
+          },
+          timestamp: Date.now()
+        }) + '\n'
+      );
+    } catch (_e) {}
+    // #endregion
     req.session.destroy((err) => {
       if (err) return next(err);
       res.setHeader('Content-Type', 'application/json');
