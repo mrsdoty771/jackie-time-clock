@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
 const { encrypt, decrypt } = require('../utils/encrypt');
+const { sendSystemEmail } = require('../utils/systemEmail');
 
 function normalizeStatus(status) {
   if (!status) return 'active';
@@ -173,7 +174,7 @@ async function createEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  let { name, employee_number, email, phone, hire_date, password: initialPassword } = req.body;
+  let { name, employee_number, email, phone, hire_date } = req.body;
 
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'Name is required' });
@@ -199,32 +200,61 @@ async function createEmployee(req, res) {
   }
 
   try {
+    const emailNorm = email ? String(email).trim().toLowerCase() : null;
+
     const employee = await Employee.create({
       companyId,
       name: String(name).trim(),
       employeeNumber: String(employee_number),
-      email: email ? String(email).trim() : undefined,
+      email: emailNorm || undefined,
       phone: phone ? String(phone).trim() : undefined,
       hireDate: hireDate || undefined,
       active: true,
     });
 
-    // Use manager-provided password if given; otherwise generate a temporary one.
-    const passwordToUse = (initialPassword && String(initialPassword).trim()) || null;
-    const tempPassword = passwordToUse || crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
+    const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
     const defaultPasswordHash = bcrypt.hashSync(tempPassword, 10);
     const passwordDisplayEncrypted = encrypt(tempPassword);
     await User.create({
       companyId,
       username: String(employee_number).trim(),
+      name: String(name).trim(),
+      email: emailNorm || undefined,
       password: defaultPasswordHash,
       passwordDisplayEncrypted: passwordDisplayEncrypted || undefined,
       role: 'employee',
       employeeId: employee._id,
+      mustChangePassword: true,
     });
 
-    const response = { success: true, id: String(employee._id) };
-    if (!passwordToUse) response.temp_password = tempPassword;
+    let inviteEmailSent = false;
+    if (emailNorm) {
+      try {
+        const sendResult = await sendSystemEmail({
+          to: emailNorm,
+          subject: 'Your time clock login',
+          text: [
+            'An account was created for you on the time clock.',
+            '',
+            `Username: ${String(employee_number).trim()}`,
+            `Temporary password: ${tempPassword}`,
+            '',
+            'Sign in with your username or this email address. You will be asked to create a new password on first login.',
+          ].join('\n'),
+        });
+        inviteEmailSent = !!sendResult.sent;
+        if (!sendResult.sent) {
+          console.warn('Employee invite email not sent:', sendResult.error);
+        }
+      } catch (mailErr) {
+        console.error('Employee invite email error:', mailErr.message || mailErr);
+      }
+    }
+
+    const response = { success: true, id: String(employee._id), invite_email_sent: inviteEmailSent };
+    if (!inviteEmailSent) {
+      response.temp_password = tempPassword;
+    }
     return res.json(response);
   } catch (err) {
     console.error('createEmployee error:', err);
@@ -265,20 +295,24 @@ async function updateEmployee(req, res) {
 
     employee.name = String(name).trim();
     employee.employeeNumber = String(employee_number).trim();
-    employee.email = email ? String(email).trim() : undefined;
+    employee.email = email ? String(email).trim().toLowerCase() : undefined;
     employee.phone = phone ? String(phone).trim() : undefined;
     if (isActive !== undefined) employee.active = isActive;
 
     await employee.save();
 
-    // Update employee user: username if employee number changed, and optional password
-    const userUpdates = {};
+    // Update employee user: display name, email (login), username if employee number changed, optional password
+    const userUpdates = { name: employee.name };
+    if (email !== undefined) {
+      userUpdates.email = employee.email || null;
+    }
     if (String(oldEmployeeNumber) !== String(employee.employeeNumber)) {
       userUpdates.username = employee.employeeNumber;
     }
     if (newPassword !== undefined && newPassword !== null && String(newPassword).trim().length > 0) {
       const pwdPlain = String(newPassword).trim();
       userUpdates.password = bcrypt.hashSync(pwdPlain, 10);
+      userUpdates.mustChangePassword = false;
       const enc = encrypt(pwdPlain);
       if (enc) userUpdates.passwordDisplayEncrypted = enc;
     }
@@ -324,7 +358,7 @@ async function setEmployeePassword(req, res) {
     const hashed = bcrypt.hashSync(String(password), 10);
     const result = await User.updateOne(
       { companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } },
-      { $set: { password: hashed } }
+      { $set: { password: hashed, mustChangePassword: false } }
     );
 
     if (!result.matchedCount) {

@@ -10,15 +10,71 @@ function normalizeCompanyId(raw) {
   return companyId.length ? companyId : null;
 }
 
+function looksLikeEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+}
+
+/**
+ * Resolve a User within companyId by username (exact) or email (case-insensitive).
+ */
+async function resolveUserByIdentifier(companyId, identifierRaw) {
+  const identifier = String(identifierRaw || '').trim();
+  if (!identifier) return { user: null, employeeName: null };
+
+  let user = await User.findOne({ companyId, username: identifier }).lean();
+  if (user) {
+    let employeeName = null;
+    if (user.employeeId) {
+      const emp = await Employee.findOne({ _id: user.employeeId, companyId, active: true }).select('name').lean();
+      employeeName = emp ? emp.name : null;
+    }
+    return { user, employeeName };
+  }
+
+  if (looksLikeEmail(identifier)) {
+    const emailLower = identifier.toLowerCase();
+    user = await User.findOne({ companyId, email: emailLower }).lean();
+    if (user) {
+      let employeeName = null;
+      if (user.employeeId) {
+        const emp = await Employee.findOne({ _id: user.employeeId, companyId, active: true }).select('name').lean();
+        employeeName = emp ? emp.name : null;
+      }
+      return { user, employeeName };
+    }
+
+    const esc = emailLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const emp = await Employee.findOne({
+      companyId,
+      active: true,
+      email: new RegExp(`^${esc}$`, 'i'),
+    })
+      .select('_id name')
+      .lean();
+    if (emp) {
+      user = await User.findOne({
+        companyId,
+        employeeId: emp._id,
+        role: { $in: ['employee', 'manager', 'super-admin'] },
+      }).lean();
+      if (user) return { user, employeeName: emp.name };
+    }
+  }
+
+  return { user: null, employeeName: null };
+}
+
 // POST /api/login
-// Supports:
-// - manager login via { username, password, companyId }
-// - employee login via { employee_id, password, companyId }
+// Body: { username, password, companyId } — username is login name or email (legacy: identifier)
 async function login(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
-  const { username, password, employee_id } = req.body;
-  const companyId = normalizeCompanyId(req.body.companyId);
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const loginName = String(
+    body.username != null && body.username !== '' ? body.username : body.identifier != null ? body.identifier : ''
+  ).trim();
+  const { password } = body;
+  const companyId = normalizeCompanyId(body.companyId);
 
   if (!companyId) {
     return res.status(400).json({ error: 'companyId is required' });
@@ -28,31 +84,14 @@ async function login(req, res) {
     return res.status(400).json({ error: 'Password is required' });
   }
 
+  if (!loginName) {
+    return res.status(400).json({ error: 'Username or email is required' });
+  }
+
   try {
-    let user = null;
-    let employeeName = null;
-    let employeeId = null;
-
-    if (employee_id) {
-      // Employee login via employee id
-      const emp = await Employee.findOne({ _id: employee_id, companyId, active: true }).lean();
-      if (!emp) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
-
-      employeeName = emp.name;
-      employeeId = String(emp._id);
-
-      user = await User.findOne({ companyId, employeeId: emp._id, role: { $in: ['employee', 'manager'] } }).lean();
-      if (!user) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
-    } else if (username) {
-      // Manager or super-admin login via username
-      user = await User.findOne({
-        companyId,
-        username,
-        role: { $in: ['manager', 'super-admin'] },
-      }).lean();
-      if (!user) return res.status(401).json({ error: 'User not found. Check Company ID and name.' });
-    } else {
-      return res.status(400).json({ error: 'Username or employee_id required' });
+    const { user, employeeName } = await resolveUserByIdentifier(companyId, loginName);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found. Check your username or email and company.' });
     }
 
     let passwordMatch = false;
@@ -68,20 +107,28 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Wrong password. Please try again.' });
     }
 
+    const mustChange = !!user.mustChangePassword;
+    const employeeId = user.employeeId ? String(user.employeeId) : null;
+
     req.session.lastActivity = Date.now();
     req.session.user = {
       id: String(user._id),
       username: user.username,
       role: user.role,
       companyId: user.companyId,
-      employee_id: employeeId || (user.employeeId ? String(user.employeeId) : null),
+      employee_id: employeeId,
       employee_name: employeeName || null,
       name: user.name || null,
       email: user.email || null,
       ext: user.ext || null,
+      must_change_password: mustChange,
     };
 
-    return res.json({ success: true, user: req.session.user });
+    return res.json({
+      success: true,
+      user: req.session.user,
+      must_change_password: mustChange,
+    });
   } catch (err) {
     console.error('Login error:', err.message || err);
     const msg = err.message || String(err);
@@ -105,7 +152,14 @@ function logout(req, res) {
 // GET /api/me
 function me(req, res) {
   res.setHeader('Content-Type', 'application/json');
-  return res.json({ user: req.session?.user || null });
+  const u = req.session?.user || null;
+  if (!u) return res.json({ user: null });
+  return res.json({
+    user: {
+      ...u,
+      must_change_password: !!u.must_change_password,
+    },
+  });
 }
 
 // GET /api/profile — current user's profile (name, email, ext) for manager/self
@@ -177,6 +231,7 @@ async function updateProfile(req, res) {
     if (ext !== undefined) user.ext = String(ext).trim() || null;
     if (newPassword && String(newPassword).trim()) {
       user.password = bcrypt.hashSync(String(newPassword).trim(), 10);
+      user.mustChangePassword = false;
     }
     if (displayName !== undefined) user.displayName = String(displayName).trim() || null;
     if (smtpHost !== undefined) user.smtpHost = String(smtpHost).trim() || null;
@@ -195,7 +250,13 @@ async function updateProfile(req, res) {
     user.markModified('smtpPassEncrypted');
     user.markModified('defaultEmailBody');
     await user.save();
-    const sessionUser = { ...req.session.user, name: user.name, email: user.email, ext: user.ext };
+    const sessionUser = {
+      ...req.session.user,
+      name: user.name,
+      email: user.email,
+      ext: user.ext,
+      must_change_password: !!user.mustChangePassword,
+    };
     if (user.employeeId) sessionUser.employee_id = String(user.employeeId);
     else sessionUser.employee_id = null;
     req.session.user = sessionUser;
@@ -371,13 +432,16 @@ function getLoginOptions(req, res) {
   return res.json(out);
 }
 
-// POST /api/forgot-password — public; reset password by companyId + identity (username or employee_id)
-// Body: { companyId, username?, employee_id?, newPassword, confirmPassword }
+// POST /api/forgot-password — public; reset password by companyId + username (or email)
+// Body: { companyId, username, newPassword, confirmPassword } (legacy: identifier, employee_id)
 async function resetPassword(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const companyId = normalizeCompanyId(body.companyId);
-  const { username, employee_id, newPassword, confirmPassword } = body;
+  const loginName = String(
+    body.username != null && body.username !== '' ? body.username : body.identifier != null ? body.identifier : ''
+  ).trim();
+  const { employee_id, newPassword, confirmPassword } = body;
 
   if (!companyId) {
     return res.status(400).json({ error: 'Company ID is required' });
@@ -404,13 +468,11 @@ async function resetPassword(req, res) {
         employeeId: emp._id,
         role: { $in: ['employee', 'manager'] },
       });
-    } else if (username && String(username).trim()) {
-      user = await User.findOne({
-        companyId,
-        username: String(username).trim(),
-      });
+    } else if (loginName) {
+      const resolved = await resolveUserByIdentifier(companyId, loginName);
+      user = resolved.user ? await User.findById(resolved.user._id) : null;
     } else {
-      return res.status(400).json({ error: 'Select your name and try again.' });
+      return res.status(400).json({ error: 'Enter your username or email.' });
     }
 
     if (!user) {
@@ -418,6 +480,7 @@ async function resetPassword(req, res) {
     }
 
     user.password = bcrypt.hashSync(String(newPassword).trim(), 10);
+    user.mustChangePassword = false;
     await user.save();
 
     return res.json({ success: true, message: 'Password updated. You can log in with your new password.' });

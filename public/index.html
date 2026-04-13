@@ -10,13 +10,11 @@
     <div id="login-page" class="page">
         <div class="login-container">
             <h1>MVC Time Clock</h1>
+            <div id="standard-login-flow">
             <form id="login-form" onsubmit="if(typeof handleLogin==='function')handleLogin(event); return false;">
                 <div class="form-group">
-                    <label for="user-select">Select Your Name</label>
-                    <select id="user-select" required>
-                        <option value="">-- Select Name --</option>
-                        <option value="admin">Admin</option>
-                    </select>
+                    <label for="login-identifier">Username or email</label>
+                    <input type="text" id="login-identifier" name="login_identifier" autocomplete="username" required placeholder="e.g. admin or you@company.com">
                 </div>
                 <div id="login-password-row" class="form-group">
                     <label for="password">Password</label>
@@ -32,7 +30,7 @@
                 <p class="login-forgot-link" id="forgot-password-link-wrap"><a href="#" id="forgot-password-link">Forgot password?</a></p>
             </form>
             <div id="forgot-password-section" class="hidden">
-                <p class="forgot-intro">Enter your new password below. Use the same name you selected above.</p>
+                <p class="forgot-intro">Enter your new password below. Use the same username or email you use to log in.</p>
                 <form id="forgot-password-form">
                     <div class="form-group">
                         <label for="forgot-new-password">New password</label>
@@ -58,6 +56,23 @@
                     <p class="login-forgot-link"><a href="#" id="back-to-login-link">Back to Login</a></p>
                 </form>
                 <div id="forgot-password-message" class="error-message"></div>
+            </div>
+            </div>
+            <div id="forced-password-section" class="hidden">
+                <h2 class="forced-password-title">Create new password</h2>
+                <p class="forced-password-intro">For security, you must choose a new password before using the time clock.</p>
+                <form id="forced-password-form">
+                    <div class="form-group">
+                        <label for="forced-new-password">New password</label>
+                        <input type="password" id="forced-new-password" minlength="6" autocomplete="new-password" required placeholder="At least 6 characters">
+                    </div>
+                    <div class="form-group">
+                        <label for="forced-confirm-password">Confirm new password</label>
+                        <input type="password" id="forced-confirm-password" minlength="6" autocomplete="new-password" required placeholder="Same as above">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save password</button>
+                </form>
+                <div id="forced-password-message" class="error-message"></div>
             </div>
             <div id="login-error" class="error-message"></div>
         </div>
@@ -499,11 +514,7 @@
                     <label for="emp-hire-date">Hire Date</label>
                     <input type="date" id="emp-hire-date">
                 </div>
-                <div class="form-group">
-                    <label for="emp-password">Initial Password</label>
-                    <input type="password" id="emp-password" placeholder="e.g. Welcome1 (they can change on first login)" autocomplete="new-password">
-                    <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">Give a generic password; employee will change it when they first log in. Leave blank to auto-generate one.</small>
-                </div>
+                <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. If you enter an email and the server has SMTP configured (<code>SMTP_USER</code> / <code>SMTP_PASS</code> in <code>.env</code>), login details are emailed. Otherwise you will see the temporary password in the confirmation message.</p>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-add-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="add-employee-submit-btn">Add Employee</button>

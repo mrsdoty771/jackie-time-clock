@@ -23,6 +23,7 @@ const reportsRoutes = require('./routes/reportsRoutes');
 //  I kept them here in case you need them later, otherwise they can be removed.)
 const bcrypt = require('bcryptjs');
 const User = require('./models/User');
+const { blockIfMustChangePassword } = require('./middleware/auth');
 const CompanySettings = require('./models/CompanySettings');
 const Punch = require('./models/Punch');
 
@@ -67,6 +68,8 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+app.use('/api', blockIfMustChangePassword);
+
 // 6. Connect Routes
 app.use('/api', authRoutes);
 app.use('/api', employeeRoutes);
@@ -107,7 +110,38 @@ app.listen(PORT, '0.0.0.0', () => {
       } catch (idxErr) {
         console.error('Punch index creation warning:', idxErr?.message || idxErr);
       }
-      // Ensure default manager users exist if env vars are set
+
+      /**
+       * Bootstrap super admin: username `admin` in `superCo`, password `123abc` (hashed), mustChangePassword true, role super-admin.
+       * On every server start: upserts that user and always resets password + mustChangePassword (same hash each boot until you change password in-app — next restart resets again by design).
+       * Company id: SUPER_ADMIN_COMPANY_ID, else DEFAULT_COMPANY_ID, else "MVC" (must match app login company).
+       */
+      async function ensureSuperAdmin() {
+        const superCo = String(process.env.SUPER_ADMIN_COMPANY_ID || process.env.DEFAULT_COMPANY_ID || 'MVC').trim();
+        const passwordHash = bcrypt.hashSync('123abc', 10);
+        await User.findOneAndUpdate(
+          { companyId: superCo, username: 'admin' },
+          {
+            $set: {
+              password: passwordHash,
+              mustChangePassword: true,
+              role: 'super-admin',
+            },
+            $setOnInsert: {
+              companyId: superCo,
+              username: 'admin',
+            },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        console.log(
+          `[ensureSuperAdmin] Ensured super admin: company="${superCo}" username="admin" password reset to "123abc" (mustChangePassword=true).`
+        );
+      }
+
+      await ensureSuperAdmin();
+
+      // Ensure default manager users exist if env vars are set (skip if username already taken by any role)
       const companyId = String(process.env.DEFAULT_COMPANY_ID || '').trim();
       const forceRecreate = process.env.FORCE_RECREATE_MANAGERS === 'true';
       const adminUsername = String(process.env.DEFAULT_ADMIN_USERNAME || '').trim();
@@ -117,7 +151,7 @@ app.listen(PORT, '0.0.0.0', () => {
           await User.deleteMany({ companyId, username: adminUsername, role: 'manager' });
           console.log(`Deleted existing "${adminUsername}" (force recreate).`);
         }
-        const existingAdmin = await User.findOne({ companyId, username: adminUsername, role: 'manager' }).lean();
+        const existingAdmin = await User.findOne({ companyId, username: adminUsername }).lean();
         if (!existingAdmin) {
           await User.create({
             companyId,
@@ -135,7 +169,7 @@ app.listen(PORT, '0.0.0.0', () => {
           await User.deleteMany({ companyId, username: joshUsername, role: 'manager' });
           console.log(`Deleted existing "${joshUsername}" (force recreate).`);
         }
-        const existingJosh = await User.findOne({ companyId, username: joshUsername, role: 'manager' }).lean();
+        const existingJosh = await User.findOne({ companyId, username: joshUsername }).lean();
         if (!existingJosh) {
           await User.create({
             companyId,

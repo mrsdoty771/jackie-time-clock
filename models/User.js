@@ -12,6 +12,7 @@ const UserSchema = new mongoose.Schema(
     ext: { type: String, trim: true, default: null },
     password: { type: String, required: true }, // bcrypt hash
     passwordDisplayEncrypted: { type: String, default: null }, // encrypted plaintext for manager edit form only
+    mustChangePassword: { type: Boolean, default: false },
 
     role: { type: String, enum: ['manager', 'employee', 'super-admin'], default: 'employee' },
 
@@ -31,5 +32,7 @@ const UserSchema = new mongoose.Schema(
 
 // Username must be unique within a company (not globally)
 UserSchema.index({ companyId: 1, username: 1 }, { unique: true });
+// Email login: at most one account per email per company (null emails ignored)
+UserSchema.index({ companyId: 1, email: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('User', UserSchema);

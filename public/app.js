@@ -8,7 +8,6 @@ const LOGIN_COMPANY_ID = 'MVC';
 let currentUser = null;
 let employees = [];
 let currentWeekStart = null;
-let loginOptions = { superAdmin: null };
 let lastReportData = null;
 /** Company timezone (IANA, e.g. America/New_York). Set after login via loadCompanyTimezone(). */
 let companyTimezone = 'UTC';
@@ -41,6 +40,22 @@ window.fetch = function (url) {
         if (isApi && res.status === 401) {
             handleSessionExpired('Session expired due to inactivity. Please log in again.');
         }
+        if (isApi && res.status === 403) {
+            return res.clone().json().then(function (data) {
+                if (data && data.code === 'PASSWORD_RESET_REQUIRED') {
+                    fetch(`${API_BASE}/me`, { credentials: 'include' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (d) {
+                            if (d && d.user) currentUser = d.user;
+                            showForcedPasswordChangeUI();
+                        })
+                        .catch(function () { showForcedPasswordChangeUI(); });
+                }
+                return res;
+            }).catch(function () {
+                return res;
+            });
+        }
         return res;
     });
 };
@@ -53,7 +68,6 @@ function init() {
     }, 100);
     setupEventListeners();
     initializeWeekStart();
-    loadEmployeesForLogin();
 }
 
 if (document.readyState === 'loading') {
@@ -134,21 +148,43 @@ function checkAuth() {
         .then(data => {
             if (data && data.user) {
                 currentUser = data.user;
-                showPage(data.user.role);
-                loadInitialData();
+                if (data.user.must_change_password) {
+                    showForcedPasswordChangeUI();
+                } else {
+                    showPage(data.user.role);
+                    loadInitialData();
+                }
             } else {
                 showLoginPage();
-                loadEmployeesForLogin();
             }
         })
         .catch((err) => {
             console.log('Auth check failed (this is normal if not logged in):', err);
             showLoginPage();
-            loadEmployeesForLogin();
         });
 }
 
+function hideForcedPasswordChangeUI() {
+    document.getElementById('forced-password-section')?.classList.add('hidden');
+    document.getElementById('standard-login-flow')?.classList.remove('hidden');
+    const forcedMsg = document.getElementById('forced-password-message');
+    if (forcedMsg) forcedMsg.textContent = '';
+}
+
+function showForcedPasswordChangeUI() {
+    document.getElementById('employee-page')?.classList.add('hidden');
+    document.getElementById('manager-page')?.classList.add('hidden');
+    document.getElementById('login-page')?.classList.remove('hidden');
+    document.getElementById('standard-login-flow')?.classList.add('hidden');
+    document.getElementById('forced-password-section')?.classList.remove('hidden');
+    const err = document.getElementById('login-error');
+    if (err) err.textContent = '';
+    const form = document.getElementById('forced-password-form');
+    form?.reset();
+}
+
 function showLoginPage() {
+    hideForcedPasswordChangeUI();
     document.getElementById('login-page').classList.remove('hidden');
     document.getElementById('employee-page').classList.add('hidden');
     document.getElementById('manager-page').classList.add('hidden');
@@ -210,6 +246,7 @@ function loadCompanyTimezone() {
 }
 
 function showPage(role) {
+    hideForcedPasswordChangeUI();
     document.getElementById('login-page').classList.add('hidden');
     loadCompanyTimezone();
     if (role === 'manager' || role === 'super-admin') {
@@ -272,11 +309,7 @@ function setupEventListeners() {
         handleLogin(e);
         return false;
     });
-    // Clear password when user picks a different name from the dropdown
-    document.getElementById('user-select')?.addEventListener('change', () => {
-        const pwd = document.getElementById('password');
-        if (pwd) pwd.value = '';
-    });
+    document.getElementById('forced-password-form')?.addEventListener('submit', handleForcedPasswordSubmit);
     // Forgot password: show forgot form, hide login password + button
     document.getElementById('forgot-password-link')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -593,65 +626,6 @@ function setupEventListeners() {
     document.querySelector('.close-email-report')?.addEventListener('click', closeEmailReportModal);
 }
 
-function loadEmployeesForLogin() {
-    const select = document.getElementById('user-select');
-    if (!select) return;
-
-    const previousValue = select.value;
-
-    select.innerHTML = '<option value="">-- Select Name --</option>';
-
-    const companyId = getLoginCompanyId();
-
-    const loginOptionsUrl = companyId
-        ? `${API_BASE}/login-options?companyId=${encodeURIComponent(companyId)}`
-        : `${API_BASE}/login-options`;
-    Promise.all([
-        fetch(loginOptionsUrl, { credentials: 'include' }).then(r => r.json()),
-        companyId ? fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`).then(r => r.json()) : Promise.resolve([])
-    ]).then(([opts, empData]) => {
-        loginOptions = opts || { superAdmin: null };
-        const managers = opts.managers || [];
-        const managerNames = new Set(managers.map(m => (m.name || m.username || '').trim().toLowerCase()));
-        const managerOpts = managers.map(m =>
-            `<option value="mgr_${escapeHtml(m.username)}">${escapeHtml(m.name || m.username)}</option>`
-        ).join('');
-        // Exclude employees whose name matches a manager so each person appears only once
-        let employeesDeduped = (empData || []).filter(emp => !managerNames.has((emp.name || '').trim().toLowerCase()));
-        // Exclude the company "Admin" employee so we don't show two "Admin" entries (hardcoded manager Admin + this employee)
-        const adminEmployeeNameLower = 'admin';
-        employeesDeduped = employeesDeduped.filter(emp => (emp.name || '').trim().toLowerCase() !== adminEmployeeNameLower);
-        const employeeOptions = employeesDeduped.map(emp =>
-            `<option value="emp_${emp.id}">${escapeHtml(emp.name)}</option>`
-        ).join('');
-        select.innerHTML = '<option value="">-- Select Name --</option>' +
-            '<option value="admin">Admin</option>' +
-            managerOpts +
-            employeeOptions;
-        if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
-            select.value = previousValue;
-        }
-    }).catch(err => {
-        console.error('Error loading login options or employees:', err);
-        if (companyId) {
-            fetch(`${API_BASE}/employees/public?companyId=${encodeURIComponent(companyId)}`)
-                .then(res => res.json())
-                .then(data => {
-                    const employeesFiltered = (data || []).filter(emp => (emp.name || '').trim().toLowerCase() !== 'admin');
-                    const employeeOptions = employeesFiltered.map(emp =>
-                        `<option value="emp_${emp.id}">${emp.name}</option>`
-                    ).join('');
-                    select.innerHTML = '<option value="">-- Select Name --</option>' +
-                        '<option value="admin">Admin</option>' + employeeOptions;
-                    if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
-                        select.value = previousValue;
-                    }
-                })
-                .catch(e => console.error('Error loading employees:', e));
-        }
-    });
-}
-
 function togglePasswordVisibility(inputId, btnId) {
     const input = document.getElementById(inputId);
     const btn = document.getElementById(btnId);
@@ -666,10 +640,52 @@ function togglePasswordVisibility(inputId, btnId) {
     if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
 }
 
+function handleForcedPasswordSubmit(e) {
+    e.preventDefault();
+    const newPassword = document.getElementById('forced-new-password').value;
+    const confirmPassword = document.getElementById('forced-confirm-password').value;
+    const msgEl = document.getElementById('forced-password-message');
+
+    if (!newPassword || newPassword.length < 6) {
+        msgEl.textContent = 'Password must be at least 6 characters.';
+        msgEl.style.color = 'red';
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        msgEl.textContent = 'Passwords do not match.';
+        msgEl.style.color = 'red';
+        return;
+    }
+
+    msgEl.textContent = '';
+    fetch(`${API_BASE}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+        credentials: 'include'
+    })
+        .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                msgEl.textContent = data.error || 'Could not update password.';
+                msgEl.style.color = 'red';
+                return;
+            }
+            currentUser = { ...currentUser, must_change_password: false };
+            document.getElementById('forced-password-form').reset();
+            showPage(currentUser.role);
+            loadInitialData();
+        })
+        .catch((err) => {
+            msgEl.textContent = err.message || 'Something went wrong. Please try again.';
+            msgEl.style.color = 'red';
+        });
+}
+
 function handleForgotPasswordSubmit(e) {
     e.preventDefault();
     const companyId = getLoginCompanyId();
-    const selectedValue = document.getElementById('user-select').value;
+    const username = (document.getElementById('login-identifier')?.value || '').trim();
     const newPassword = document.getElementById('forgot-new-password').value;
     const confirmPassword = document.getElementById('forgot-confirm-password').value;
     const msgEl = document.getElementById('forgot-password-message');
@@ -679,8 +695,8 @@ function handleForgotPasswordSubmit(e) {
         msgEl.style.color = 'red';
         return;
     }
-    if (!selectedValue) {
-        msgEl.textContent = 'Please select your name above.';
+    if (!username) {
+        msgEl.textContent = 'Please enter your username or email above.';
         msgEl.style.color = 'red';
         return;
     }
@@ -695,18 +711,7 @@ function handleForgotPasswordSubmit(e) {
         return;
     }
 
-    let body = { companyId, newPassword, confirmPassword };
-    if (selectedValue === 'admin') {
-        body.username = 'admin';
-    } else if (selectedValue.startsWith('mgr_')) {
-        body.username = selectedValue.replace('mgr_', '');
-    } else if (selectedValue.startsWith('emp_')) {
-        body.employee_id = selectedValue.replace('emp_', '');
-    } else {
-        msgEl.textContent = 'Please select your name above.';
-        msgEl.style.color = 'red';
-        return;
-    }
+    const body = { companyId, username, newPassword, confirmPassword };
 
     msgEl.textContent = '';
     fetch(`${API_BASE}/forgot-password`, {
@@ -751,13 +756,13 @@ function handleForgotPasswordSubmit(e) {
 
 function handleLogin(e) {
     e.preventDefault();
-    const selectedValue = document.getElementById('user-select').value;
+    const username = (document.getElementById('login-identifier')?.value || '').trim();
     const password = document.getElementById('password').value;
     const companyId = getLoginCompanyId();
     const errorDiv = document.getElementById('login-error');
-    
-    if (!selectedValue) {
-        errorDiv.textContent = 'Please select a name';
+
+    if (!username) {
+        errorDiv.textContent = 'Please enter your username or email';
         return;
     }
 
@@ -766,21 +771,8 @@ function handleLogin(e) {
         return;
     }
 
-    let loginData;
+    const loginData = { username, password, companyId };
 
-    if (selectedValue === 'admin') {
-        loginData = { username: 'admin', password, companyId };
-    } else if (selectedValue.startsWith('mgr_')) {
-        const username = selectedValue.replace('mgr_', '');
-        loginData = { username, password, companyId };
-    } else if (selectedValue.startsWith('emp_')) {
-        const employeeId = selectedValue.replace('emp_', '');
-        loginData = { employee_id: employeeId, password, companyId };
-    } else {
-        errorDiv.textContent = 'Please select a name';
-        return;
-    }
-    
     fetch(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -802,6 +794,12 @@ function handleLogin(e) {
         console.log('Login response:', data);
         if (data.success) {
             currentUser = data.user;
+            if (data.must_change_password || currentUser.must_change_password) {
+                document.getElementById('login-form').reset();
+                errorDiv.textContent = '';
+                showForcedPasswordChangeUI();
+                return;
+            }
             showPage(data.user.role);
             loadInitialData();
             document.getElementById('login-form').reset();
@@ -812,7 +810,6 @@ function handleLogin(e) {
             errorDiv.textContent = errMsg;
             errorDiv.style.color = 'red';
             errorDiv.style.fontWeight = 'bold';
-            alert('Login failed: ' + errMsg);
         }
     })
     .catch(err => {
@@ -821,7 +818,6 @@ function handleLogin(e) {
         errorDiv.textContent = errMsg;
         errorDiv.style.color = 'red';
         errorDiv.style.fontWeight = 'bold';
-        alert('Login error: ' + errMsg);
     });
 }
 
@@ -1864,7 +1860,6 @@ function handleAddEmployee(e) {
         showMessage('Please enter the employee name.', 'error');
         return;
     }
-    const passwordInput = document.getElementById('emp-password');
     const hireDateInput = document.getElementById('emp-hire-date');
     const empNumberInput = document.getElementById('emp-number');
     let employeeNumber = empNumberInput ? empNumberInput.value.trim() : '';
@@ -1879,9 +1874,6 @@ function handleAddEmployee(e) {
         if (hireDateInput && hireDateInput.value.trim()) {
             employee.hire_date = hireDateInput.value;
         }
-        if (passwordInput && passwordInput.value.trim()) {
-            employee.password = passwordInput.value;
-        }
         if (!employee.employee_number) delete employee.employee_number;
 
         fetch(`${API_BASE}/employees`, {
@@ -1894,8 +1886,15 @@ function handleAddEmployee(e) {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : { error: 'Server error' };
             if (data.success) {
-                const tempPwd = data.temp_password ? ` Temporary password: ${data.temp_password}` : ' They can log in with the password you set and change it later.';
-                showMessage('Employee added successfully!' + tempPwd, 'success');
+                let detail = '';
+                if (data.invite_email_sent) {
+                    detail = ' Login details were emailed; they must create a new password on first login.';
+                } else if (data.temp_password) {
+                    detail = ` Temporary password (share securely): ${data.temp_password}. They must create a new password on first login.`;
+                } else {
+                    detail = ' A temporary password was generated; configure SMTP in .env to email it automatically.';
+                }
+                showMessage('Employee added successfully!' + detail, 'success');
                 document.getElementById('add-employee-modal').classList.add('hidden');
                 document.getElementById('add-employee-form').reset();
                 const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
