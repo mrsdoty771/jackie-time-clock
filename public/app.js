@@ -1557,6 +1557,8 @@ function populateEditForm(employee) {
     document.getElementById('edit-emp-name').value = employee.name || '';
     document.getElementById('edit-emp-number').value = employee.employee_number || '';
     document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
+    const editEmailEl = document.getElementById('edit-emp-email');
+    if (editEmailEl) editEmailEl.value = employee.email || '';
     const pwdInput = document.getElementById('edit-emp-password');
     const hasRealPassword = employee.password != null && String(employee.password).trim() !== '';
     if (hasRealPassword) {
@@ -1622,6 +1624,7 @@ function handleEditEmployee(e) {
         name: document.getElementById('edit-emp-name').value,
         employee_number: document.getElementById('edit-emp-number').value,
         phone: document.getElementById('edit-emp-phone').value,
+        email: (document.getElementById('edit-emp-email')?.value ?? '').trim(),
         active: parseInt(document.getElementById('edit-emp-status').value)
     };
     if (newPassword) employee.password = newPassword;

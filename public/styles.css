@@ -361,6 +361,22 @@ body {
     color: #000;
 }
 
+#edit-employee-modal .close-edit {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 36px;
+    line-height: 1;
+    cursor: pointer;
+    color: #333;
+    padding: 4px 8px;
+    user-select: none;
+}
+
+#edit-employee-modal .close-edit:hover {
+    color: #000;
+}
+
 #add-employee-form .form-actions {
     display: flex;
     gap: 16px;
