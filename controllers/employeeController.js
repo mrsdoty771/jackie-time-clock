@@ -100,6 +100,10 @@ async function listEmployees(req, res) {
           email: e.email || null,
           phone: e.phone || null,
           active: e.active ? 1 : 0,
+          termination_date:
+            e.terminationDate && !isNaN(new Date(e.terminationDate).getTime())
+              ? new Date(e.terminationDate).toISOString().slice(0, 10)
+              : null,
         };
         if (managerMap[String(e._id)] !== undefined) {
           out.has_manager = true;
@@ -140,6 +144,10 @@ async function getEmployee(req, res) {
       email: employee.email || '',
       phone: employee.phone || '',
       active: employee.active ? 1 : 0,
+      termination_date:
+        employee.terminationDate && !isNaN(new Date(employee.terminationDate).getTime())
+          ? new Date(employee.terminationDate).toISOString().slice(0, 10)
+          : null,
       password,
       has_manager: !!managerUser,
       manager_username: managerUser ? managerUser.username : null,
@@ -298,6 +306,9 @@ async function updateEmployee(req, res) {
     employee.email = email ? String(email).trim().toLowerCase() : undefined;
     employee.phone = phone ? String(phone).trim() : undefined;
     if (isActive !== undefined) employee.active = isActive;
+    if (isActive === true) {
+      employee.terminationDate = undefined;
+    }
 
     await employee.save();
 
@@ -372,7 +383,40 @@ async function setEmployeePassword(req, res) {
   }
 }
 
-// DELETE /api/employees/:id (manager only) -> soft deactivate
+// PUT /api/employees/:id/terminate (manager only) — inactive + termination date; record retained
+async function terminateEmployee(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+
+  const companyId = req.companyId;
+  const { id } = req.params;
+  const termination_date = req.body && req.body.termination_date != null ? String(req.body.termination_date).trim() : '';
+
+  if (!termination_date) {
+    return res.status(400).json({ error: 'Termination date is required' });
+  }
+
+  const termDate = new Date(termination_date);
+  if (isNaN(termDate.getTime())) {
+    return res.status(400).json({ error: 'Invalid termination date' });
+  }
+
+  try {
+    const employee = await Employee.findOne({ _id: id, companyId });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (!employee.active) {
+      return res.status(400).json({ error: 'Employee is already inactive' });
+    }
+    employee.active = false;
+    employee.terminationDate = termDate;
+    await employee.save();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('terminateEmployee error:', err);
+    return res.status(500).json({ error: 'Database error' });
+  }
+}
+
+// DELETE /api/employees/:id (manager only) -> soft deactivate (no termination date; prefer PUT .../terminate)
 async function deactivateEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
@@ -474,6 +518,7 @@ module.exports = {
   createEmployee,
   updateEmployee,
   setEmployeePassword,
+  terminateEmployee,
   deactivateEmployee,
   grantManager,
   revokeManager,

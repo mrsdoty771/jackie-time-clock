@@ -435,6 +435,16 @@ function setupEventListeners() {
     document.querySelector('.close-edit')?.addEventListener('click', () => {
         document.getElementById('edit-employee-modal').classList.add('hidden');
     });
+
+    document.getElementById('terminate-employee-form')?.addEventListener('submit', handleTerminateEmployeeSubmit);
+    document.getElementById('cancel-terminate-employee-btn')?.addEventListener('click', () => {
+        document.getElementById('terminate-employee-modal')?.classList.add('hidden');
+        document.getElementById('terminate-employee-form')?.reset();
+    });
+    document.querySelector('.close-terminate-employee')?.addEventListener('click', () => {
+        document.getElementById('terminate-employee-modal')?.classList.add('hidden');
+        document.getElementById('terminate-employee-form')?.reset();
+    });
     
     // Phone number formatting for edit modal
     const editPhoneInput = document.getElementById('edit-emp-phone');
@@ -1297,7 +1307,7 @@ function updateEmployeeManagementDetails() {
 
     const selectedId = select.value;
     if (!selectedId) {
-        detailsContainer.innerHTML = '<p style="color: #666;">Select an employee from the dropdown above to view details and edit or remove.</p>';
+        detailsContainer.innerHTML = '<p style="color: #666;">Select an employee from the dropdown above to view details, edit, or terminate.</p>';
         return;
     }
 
@@ -1307,9 +1317,15 @@ function updateEmployeeManagementDetails() {
         return;
     }
 
-    const statusBadge = emp.active === 1 || emp.active === '1'
+    const isActiveEmp = emp.active === 1 || emp.active === '1';
+    const statusBadge = isActiveEmp
         ? '<span style="background: #28a745; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Active</span>'
         : '<span style="background: #dc3545; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; margin-left: 10px;">Inactive</span>';
+
+    const termLine =
+        !isActiveEmp && emp.termination_date
+            ? `<p style="color:#666;font-size:14px;margin:8px 0 0 0;">Termination date: <strong>${escapeHtml(String(emp.termination_date))}</strong></p>`
+            : '';
 
     const hasManager = emp.has_manager === true || emp.has_manager === '1';
     const empId = String(emp.id);
@@ -1326,11 +1342,12 @@ function updateEmployeeManagementDetails() {
             <div class="employee-info">
                 <h4>${escapeHtml(emp.name)}${statusBadge}${roleSegment}</h4>
                 <p>Employee #: ${escapeHtml(emp.employee_number)}${emp.email ? ` | Email: ${escapeHtml(emp.email)}` : ''}${emp.phone ? ` | Phone: ${escapeHtml(emp.phone)}` : ''}</p>
+                ${termLine}
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button type="button" class="btn btn-primary btn-save-role">Save</button>
                 <button class="btn btn-primary" onclick="editEmployee('${empIdEsc}')">Edit</button>
-                <button class="btn btn-danger" onclick="removeEmployee('${empIdEsc}')">Remove</button>
+                ${isActiveEmp ? `<button type="button" class="btn btn-danger" onclick="openTerminateEmployeeModal('${empIdEsc}')">Terminate</button>` : ''}
             </div>
         </div>
     `;
@@ -1481,6 +1498,22 @@ function editPunch(id) {
                 }
             }
             document.getElementById('edit-punch-modal').classList.remove('hidden');
+            // #region agent log
+            requestAnimationFrame(() => {
+                const modalEl = document.getElementById('edit-punch-modal');
+                const contentEl = modalEl && modalEl.querySelector('.modal-content');
+                const closeEl = modalEl && modalEl.querySelector('.close-edit-punch');
+                const cs = contentEl && getComputedStyle(contentEl);
+                const closeCs = closeEl && getComputedStyle(closeEl);
+                const cr = closeEl && closeEl.getBoundingClientRect();
+                const mr = contentEl && contentEl.getBoundingClientRect();
+                const closeCenterX = cr ? cr.left + cr.width / 2 : null;
+                const modalCenterX = mr ? mr.left + mr.width / 2 : null;
+                const deltaCenter = closeCenterX != null && modalCenterX != null ? Math.abs(closeCenterX - modalCenterX) : null;
+                const gapModalRightMinusCloseRight = cr && mr ? mr.right - cr.right : null;
+                fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c34797' }, body: JSON.stringify({ sessionId: 'c34797', runId: 'post-css', hypothesisId: 'H1-H5', location: 'app.js:editPunch', message: 'edit-punch modal layout probe', data: { modalContentTextAlign: cs && cs.textAlign, closePosition: closeCs && closeCs.position, closeRight: cr && cr.right, modalRight: mr && mr.right, deltaCloseCenterToModalCenterPx: deltaCenter, gapModalRightMinusCloseRightPx: gapModalRightMinusCloseRight }, timestamp: Date.now() }) }).catch(() => {});
+            });
+            // #endregion
         })
         .catch(() => showMessage('Error loading punch', 'error'));
 }
@@ -1676,27 +1709,73 @@ function handleEditEmployee(e) {
     });
 }
 
-function removeEmployee(id) {
-    if (!confirm('Are you sure you want to remove this employee?')) return;
-    
-    fetch(`${API_BASE}/employees/${id}`, { 
-        method: 'DELETE',
-        credentials: 'include'
+function openTerminateEmployeeModal(id) {
+    if (!id) return;
+    const emp = employees.find((e) => String(e.id) === String(id));
+    if (!emp) {
+        showMessage('Employee not found in the current list.', 'error');
+        return;
+    }
+    const isActiveEmp = emp.active === 1 || emp.active === '1';
+    if (!isActiveEmp) {
+        showMessage('This employee is already inactive.', 'error');
+        return;
+    }
+    const idInput = document.getElementById('terminate-employee-id');
+    const nameEl = document.getElementById('terminate-employee-name');
+    const dateEl = document.getElementById('terminate-employee-date');
+    if (idInput) idInput.value = String(id);
+    if (nameEl) nameEl.textContent = emp.name ? String(emp.name) : '';
+    if (dateEl) {
+        const t = new Date();
+        dateEl.value =
+            t.getFullYear() +
+            '-' +
+            String(t.getMonth() + 1).padStart(2, '0') +
+            '-' +
+            String(t.getDate()).padStart(2, '0');
+    }
+    document.getElementById('terminate-employee-modal')?.classList.remove('hidden');
+}
+
+function handleTerminateEmployeeSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('terminate-employee-id')?.value;
+    const termination_date = document.getElementById('terminate-employee-date')?.value;
+    if (!id || !termination_date) {
+        showMessage('Termination date is required.', 'error');
+        return;
+    }
+    fetch(`${API_BASE}/employees/${encodeURIComponent(id)}/terminate`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ termination_date }),
     })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                showMessage('Employee removed successfully', 'success');
-                // Reload with current filter
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text && text.trim()) data = JSON.parse(text);
+            } catch (_) {
+                data = { error: res.statusText || 'Server error' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                showMessage('Employee terminated. Their record is kept for history.', 'success');
+                document.getElementById('terminate-employee-modal')?.classList.add('hidden');
+                document.getElementById('terminate-employee-form')?.reset();
                 const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
                 loadEmployees(currentFilter);
                 loadEmployeesForPunch();
                 loadEmployeesForReport();
+            } else {
+                showMessage(data.error || 'Could not terminate employee', 'error');
             }
         })
-        .catch(err => {
-            showMessage('Error removing employee', 'error');
-        });
+        .catch(() => showMessage('Could not terminate employee', 'error'));
 }
 
 function setEmployeeRoleFromCard(employeeId, isManager, segContainerEl) {
@@ -2897,7 +2976,7 @@ window.closeWelcomeBackModal = closeWelcomeBackModal;
 window.closeClockOutModal = closeClockOutModal;
 
 // Make employee/punch actions available globally (for inline onclick from cards/modals)
-window.removeEmployee = removeEmployee;
+window.openTerminateEmployeeModal = openTerminateEmployeeModal;
 window.editEmployee = editEmployee;
 window.openGrantManagerModal = openGrantManagerModal;
 window.openGrantManagerModalFromEditModal = openGrantManagerModalFromEditModal;

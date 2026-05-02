@@ -11,6 +11,8 @@ const EmployeeSchema = new mongoose.Schema(
     email: { type: String },
     phone: { type: String },
     hireDate: { type: Date },
+    /** Set when employment ends; employee row is kept (active becomes false). */
+    terminationDate: { type: Date },
     active: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }

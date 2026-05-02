@@ -11,6 +11,7 @@ router.get('/employees/next-number', requireAuth, requireCompany, requireManager
 router.get('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.getEmployee);
 router.post('/employees', requireAuth, requireCompany, requireManager, employeeController.createEmployee);
 router.put('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.updateEmployee);
+router.put('/employees/:id/terminate', requireAuth, requireCompany, requireManager, employeeController.terminateEmployee);
 router.put('/employees/:id/password', requireAuth, requireCompany, requireManager, employeeController.setEmployeePassword);
 router.delete('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.deactivateEmployee);
 router.post('/employees/:id/grant-manager', requireAuth, requireCompany, requireManager, employeeController.grantManager);

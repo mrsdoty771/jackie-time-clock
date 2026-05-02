@@ -377,6 +377,38 @@ body {
     color: #000;
 }
 
+#edit-punch-modal .close-edit-punch {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 32px;
+    line-height: 1;
+    cursor: pointer;
+    color: #333;
+    padding: 4px;
+    user-select: none;
+}
+
+#edit-punch-modal .close-edit-punch:hover {
+    color: #000;
+}
+
+#terminate-employee-modal .close-terminate-employee {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 32px;
+    line-height: 1;
+    cursor: pointer;
+    color: #333;
+    padding: 4px;
+    user-select: none;
+}
+
+#terminate-employee-modal .close-terminate-employee:hover {
+    color: #000;
+}
+
 #add-employee-form .form-actions {
     display: flex;
     gap: 16px;

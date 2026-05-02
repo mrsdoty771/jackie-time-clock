@@ -575,6 +575,27 @@
         </div>
     </div>
 
+    <!-- Terminate employee (keeps record; sets inactive + termination date) -->
+    <div id="terminate-employee-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-terminate-employee">&times;</span>
+            <h3>Terminate employee</h3>
+            <p id="terminate-employee-name" style="color: #333; margin-bottom: 12px;"></p>
+            <p style="color: #666; font-size: 14px; text-align: left; margin-bottom: 16px;">This marks the employee inactive and stores a termination date. The employee record is <strong>not</strong> deleted.</p>
+            <form id="terminate-employee-form">
+                <input type="hidden" id="terminate-employee-id">
+                <div class="form-group">
+                    <label for="terminate-employee-date">Date of termination *</label>
+                    <input type="date" id="terminate-employee-date" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-terminate-employee-btn">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Confirm termination</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Edit Punch Modal -->
     <div id="edit-punch-modal" class="modal hidden">
         <div class="modal-content">
