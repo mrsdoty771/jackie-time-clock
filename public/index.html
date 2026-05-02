@@ -514,7 +514,7 @@
                     <label for="emp-hire-date">Hire Date</label>
                     <input type="date" id="emp-hire-date">
                 </div>
-                <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. If you enter an email and the server has SMTP configured (<code>SMTP_USER</code> / <code>SMTP_PASS</code> in <code>.env</code>), login details are emailed. Otherwise you will see the temporary password in the confirmation message.</p>
+                <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. Their login username is generated from their name (first name + last initial, e.g. Josh Doe → JoshD), with a number added if needed for uniqueness. You can change it anytime under Edit Employee. If you enter an email and the server has SMTP configured (<code>SMTP_USER</code> / <code>SMTP_PASS</code> in <code>.env</code>), login details are emailed. Otherwise you will see the temporary password in the confirmation message.</p>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-add-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="add-employee-submit-btn">Add Employee</button>
@@ -537,6 +537,14 @@
                 <div class="form-group">
                     <label for="edit-emp-number">Employee Number *</label>
                     <input type="text" id="edit-emp-number" required>
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-username">Username (login) *</label>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <input type="text" id="edit-emp-username" required maxlength="64" pattern="[a-zA-Z0-9_]+" autocomplete="username" title="Letters, numbers, and underscores only" style="flex: 1; min-width: 140px;">
+                        <button type="button" class="btn btn-secondary btn-small" id="edit-emp-username-suggest">First + last initial</button>
+                    </div>
+                    <small style="color: #666; font-size: 12px;">Used to sign in (with password or email). Example: <strong>JoshD</strong> for Josh Doe. Must be unique in your company.</small>
                 </div>
                 <div class="form-group">
                     <label for="edit-emp-phone">Phone</label>

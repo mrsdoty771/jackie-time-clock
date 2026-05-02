@@ -436,6 +436,14 @@ function setupEventListeners() {
         document.getElementById('edit-employee-modal').classList.add('hidden');
     });
 
+    document.getElementById('edit-emp-username-suggest')?.addEventListener('click', () => {
+        const nameVal = document.getElementById('edit-emp-name')?.value || '';
+        const u = suggestedLoginUsernameFromFullName(nameVal);
+        const input = document.getElementById('edit-emp-username');
+        if (input) input.value = u || input.value;
+        if (!u) showMessage('Enter a name with a first and last name to generate a username.', 'error');
+    });
+
     document.getElementById('terminate-employee-form')?.addEventListener('submit', handleTerminateEmployeeSubmit);
     document.getElementById('cancel-terminate-employee-btn')?.addEventListener('click', () => {
         document.getElementById('terminate-employee-modal')?.classList.add('hidden');
@@ -1598,10 +1606,28 @@ function editEmployee(id) {
 
 const EDIT_PASSWORD_PLACEHOLDER = '••••••••';
 
+/** Same rule as server: first name + last initial, e.g. Josh Doe -> JoshD */
+function suggestedLoginUsernameFromFullName(fullName) {
+    const trimmed = String(fullName || '').trim();
+    if (!trimmed) return '';
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '';
+    const firstSan = parts[0].replace(/[^a-zA-Z0-9]/g, '');
+    if (!firstSan) return '';
+    const first = firstSan.charAt(0).toUpperCase() + firstSan.slice(1).toLowerCase();
+    if (parts.length === 1) return first;
+    const last = parts[parts.length - 1];
+    const letter = last.match(/[a-zA-Z]/);
+    if (!letter) return first;
+    return first + letter[0].toUpperCase();
+}
+
 function populateEditForm(employee) {
     document.getElementById('edit-emp-id').value = employee.id;
     document.getElementById('edit-emp-name').value = employee.name || '';
     document.getElementById('edit-emp-number').value = employee.employee_number || '';
+    const userEl = document.getElementById('edit-emp-username');
+    if (userEl) userEl.value = employee.username != null ? String(employee.username) : '';
     document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
     const editEmailEl = document.getElementById('edit-emp-email');
     if (editEmailEl) editEmailEl.value = employee.email || '';
@@ -1669,6 +1695,7 @@ function handleEditEmployee(e) {
     const employee = {
         name: document.getElementById('edit-emp-name').value,
         employee_number: document.getElementById('edit-emp-number').value,
+        username: (document.getElementById('edit-emp-username')?.value ?? '').trim(),
         phone: document.getElementById('edit-emp-phone').value,
         email: (document.getElementById('edit-emp-email')?.value ?? '').trim(),
         active: parseInt(document.getElementById('edit-emp-status').value)

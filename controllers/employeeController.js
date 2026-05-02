@@ -13,6 +13,37 @@ function normalizeStatus(status) {
   return 'active';
 }
 
+/** Login style: first name + last name initial, e.g. "Josh Doe" -> "JoshD". One word -> that word capitalized. */
+function suggestedLoginUsernameFromDisplayName(fullName) {
+  const trimmed = String(fullName || '').trim();
+  if (!trimmed) return '';
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  const firstSan = parts[0].replace(/[^a-zA-Z0-9]/g, '');
+  if (!firstSan) return '';
+  const first = firstSan.charAt(0).toUpperCase() + firstSan.slice(1).toLowerCase();
+  if (parts.length === 1) return first;
+  const last = parts[parts.length - 1];
+  const letter = last.match(/[a-zA-Z]/);
+  if (!letter) return first;
+  return first + letter[0].toUpperCase();
+}
+
+async function allocateUniqueLoginUsername(companyId, fullName, fallbackBase) {
+  let base = suggestedLoginUsernameFromDisplayName(fullName);
+  if (!base) {
+    base = String(fallbackBase || 'user').replace(/[^a-zA-Z0-9]/g, '');
+  }
+  if (!base) base = 'user';
+  let candidate = base;
+  for (let n = 0; n < 500; n += 1) {
+    const clash = await User.findOne({ companyId, username: candidate }).select('_id').lean();
+    if (!clash) return candidate;
+    candidate = `${base}${n + 1}`;
+  }
+  return `${base}${Date.now().toString(36)}`;
+}
+
 // GET /api/employees/public?companyId=...
 // Public endpoint used on the login screen dropdown.
 async function listPublicEmployees(req, res) {
@@ -129,18 +160,21 @@ async function getEmployee(req, res) {
   try {
     const employee = await Employee.findOne({ _id: id, companyId }).lean();
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
-    const user = await User.findOne({ companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } }).select('passwordDisplayEncrypted').lean();
+    const user = await User.findOne({ companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } })
+      .select('passwordDisplayEncrypted username role')
+      .lean();
     let password = '';
     if (user && user.passwordDisplayEncrypted) {
       try {
         password = decrypt(user.passwordDisplayEncrypted) || '';
       } catch (_) {}
     }
-    const managerUser = await User.findOne({ companyId, employeeId: employee._id, role: 'manager' }).select('username').lean();
+    const hasManagerRights = !!(user && user.role === 'manager');
     return res.json({
       id: String(employee._id),
       name: employee.name || '',
       employee_number: employee.employeeNumber || '',
+      username: user && user.username ? String(user.username) : '',
       email: employee.email || '',
       phone: employee.phone || '',
       active: employee.active ? 1 : 0,
@@ -149,8 +183,8 @@ async function getEmployee(req, res) {
           ? new Date(employee.terminationDate).toISOString().slice(0, 10)
           : null,
       password,
-      has_manager: !!managerUser,
-      manager_username: managerUser ? managerUser.username : null,
+      has_manager: hasManagerRights,
+      manager_username: hasManagerRights && user.username ? user.username : null,
     });
   } catch (err) {
     console.error('getEmployee error:', err);
@@ -223,9 +257,10 @@ async function createEmployee(req, res) {
     const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
     const defaultPasswordHash = bcrypt.hashSync(tempPassword, 10);
     const passwordDisplayEncrypted = encrypt(tempPassword);
+    const loginUsername = await allocateUniqueLoginUsername(companyId, String(name).trim(), String(employee_number).trim());
     await User.create({
       companyId,
-      username: String(employee_number).trim(),
+      username: loginUsername,
       name: String(name).trim(),
       email: emailNorm || undefined,
       password: defaultPasswordHash,
@@ -244,7 +279,7 @@ async function createEmployee(req, res) {
           text: [
             'An account was created for you on the time clock.',
             '',
-            `Username: ${String(employee_number).trim()}`,
+            `Username: ${loginUsername}`,
             `Temporary password: ${tempPassword}`,
             '',
             'Sign in with your username or this email address. You will be asked to create a new password on first login.',
@@ -280,7 +315,7 @@ async function updateEmployee(req, res) {
 
   const companyId = req.companyId;
   const { id } = req.params;
-  const { name, employee_number, email, phone, active, password: newPassword } = req.body;
+  const { name, employee_number, email, phone, active, password: newPassword, username: bodyUsername } = req.body;
 
   if (!name || !employee_number) {
     return res.status(400).json({ error: 'Name and employee number are required' });
@@ -299,8 +334,6 @@ async function updateEmployee(req, res) {
     const employee = await Employee.findOne({ _id: id, companyId });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
 
-    const oldEmployeeNumber = employee.employeeNumber;
-
     employee.name = String(name).trim();
     employee.employeeNumber = String(employee_number).trim();
     employee.email = email ? String(email).trim().toLowerCase() : undefined;
@@ -312,13 +345,32 @@ async function updateEmployee(req, res) {
 
     await employee.save();
 
-    // Update employee user: display name, email (login), username if employee number changed, optional password
+    const loginUser = await User.findOne({ companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } });
+    if (!loginUser) return res.status(404).json({ error: 'Employee user account not found' });
+
+    // Update employee user: display name, email (login), optional username / password (username is not tied to employee number)
     const userUpdates = { name: employee.name };
     if (email !== undefined) {
       userUpdates.email = employee.email || null;
     }
-    if (String(oldEmployeeNumber) !== String(employee.employeeNumber)) {
-      userUpdates.username = employee.employeeNumber;
+    if (bodyUsername !== undefined && bodyUsername !== null) {
+      const u = String(bodyUsername).trim();
+      if (!u) {
+        return res.status(400).json({ error: 'Username is required' });
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(u)) {
+        return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
+      }
+      if (u.length < 2 || u.length > 64) {
+        return res.status(400).json({ error: 'Username must be 2–64 characters' });
+      }
+      const taken = await User.findOne({ companyId, username: u, _id: { $ne: loginUser._id } })
+        .select('_id')
+        .lean();
+      if (taken) {
+        return res.status(400).json({ error: 'That username is already taken in your company' });
+      }
+      userUpdates.username = u;
     }
     if (newPassword !== undefined && newPassword !== null && String(newPassword).trim().length > 0) {
       const pwdPlain = String(newPassword).trim();
