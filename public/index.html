@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MVC Time Clock</title>
-    <link rel="stylesheet" href="styles.css?v=6">
+    <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
     <div id="login-page" class="page">
@@ -81,8 +81,11 @@
     <div id="employee-page" class="page hidden">
         <nav class="navbar">
             <h2 id="employee-page-title">MVC Time Clock</h2>
-            <div>
-                <span id="employee-name"></span>
+            <div class="navbar-user-actions">
+                <div class="employee-greeting-block">
+                    <span id="employee-name" class="employee-greeting-name"></span>
+                    <a href="#" id="employee-profile-link" class="employee-profile-link">Profile</a>
+                </div>
                 <button id="logout-btn" class="btn btn-logout">Logout</button>
             </div>
         </nav>
@@ -134,6 +137,9 @@
                 </div>
                 <p id="employee-history-current" style="margin: 0 0 10px 0; color: #666; font-size: 13px;">Showing: This Week</p>
                 <div id="employee-records"></div>
+                <div class="records-section-actions">
+                    <button type="button" id="employee-records-print-btn" class="btn btn-secondary employee-records-print-btn">Print</button>
+                </div>
             </div>
         </div>
     </div>
@@ -472,6 +478,47 @@
         </div>
     </div>
 
+    <!-- Employee Profile Modal -->
+    <div id="employee-profile-modal" class="modal hidden">
+        <div class="modal-content employee-profile-modal-content">
+            <span class="close-employee-profile">&times;</span>
+            <h3>My Profile</h3>
+            <p style="color: #666; font-size: 14px; margin-bottom: 20px; text-align: left;">Update your phone number and password.</p>
+            <form id="employee-profile-form" class="form">
+                <div class="form-group">
+                    <label for="employee-profile-phone">Phone</label>
+                    <input type="tel" id="employee-profile-phone" placeholder="e.g. 555-123-4567">
+                </div>
+                <div class="form-group">
+                    <label for="employee-profile-new-password">New Password</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="employee-profile-new-password" placeholder="Leave blank to keep current password" autocomplete="new-password">
+                        <button type="button" id="employee-profile-new-password-toggle" class="password-toggle-btn" aria-label="Show password" title="Show password">
+                            <svg class="pwd-icon pwd-icon-show" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="pwd-icon pwd-icon-hide" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
+                    </div>
+                    <small style="color: #666;">Leave blank to keep your current password.</small>
+                </div>
+                <div class="form-group">
+                    <label for="employee-profile-confirm-password">Confirm New Password</label>
+                    <div class="password-input-wrap">
+                        <input type="password" id="employee-profile-confirm-password" placeholder="Confirm new password" autocomplete="new-password">
+                        <button type="button" id="employee-profile-confirm-password-toggle" class="password-toggle-btn" aria-label="Show password" title="Show password">
+                            <svg class="pwd-icon pwd-icon-show" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="pwd-icon pwd-icon-hide" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="employee-profile-message" style="margin-bottom: 12px; font-size: 14px;"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-employee-profile-btn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Grant Manager Rights Modal -->
     <div id="grant-manager-modal" class="modal hidden">
         <div class="modal-content">
@@ -503,10 +550,6 @@
                     <input type="text" id="emp-number" placeholder="Leave blank to auto-generate">
                 </div>
                 <div class="form-group">
-                    <label for="emp-email">Email</label>
-                    <input type="email" id="emp-email">
-                </div>
-                <div class="form-group">
                     <label for="emp-phone">Phone</label>
                     <input type="tel" id="emp-phone">
                 </div>
@@ -514,7 +557,7 @@
                     <label for="emp-hire-date">Hire Date</label>
                     <input type="date" id="emp-hire-date">
                 </div>
-                <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. Their login username is generated from their name (first name + last initial, e.g. Josh Doe → JoshD), with a number added if needed for uniqueness. You can change it anytime under Edit Employee. If you enter an email and the server has SMTP configured (<code>SMTP_USER</code> / <code>SMTP_PASS</code> in <code>.env</code>), login details are emailed. Otherwise you will see the temporary password in the confirmation message.</p>
+                <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. Their login username is generated from their name (first name + last initial, e.g. Josh Doe → JoshD), with a number added if needed for uniqueness. You can change it anytime under Edit Employee. The temporary password is shown in the confirmation message—share it with the employee securely.</p>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancel-add-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="add-employee-submit-btn">Add Employee</button>
@@ -549,10 +592,6 @@
                 <div class="form-group">
                     <label for="edit-emp-phone">Phone</label>
                     <input type="tel" id="edit-emp-phone">
-                </div>
-                <div class="form-group">
-                    <label for="edit-emp-email">Email</label>
-                    <input type="email" id="edit-emp-email">
                 </div>
                 <div class="form-group">
                     <label for="edit-emp-password">New Password</label>
@@ -699,7 +738,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=5"></script>
+    <script src="script.js?v=6"></script>
 </body>
 </html>
 

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
@@ -109,6 +110,9 @@ async function login(req, res) {
   }
 
   try {
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'authController.js:login',message:'login attempt',data:{companyId,hasDatabaseUrl:!!String(process.env.DATABASE_URL||'').trim(),readyState:mongoose.connection.readyState,loginLooksLikeEmail:looksLikeEmail(loginName)},timestamp:Date.now(),hypothesisId:'A,C'})}).catch(()=>{});
+    // #endregion
     const { user, employeeName } = await resolveUserByIdentifier(companyId, loginName);
     if (!user) {
       // #region agent log
@@ -136,7 +140,6 @@ async function login(req, res) {
     const mustChange = !!user.mustChangePassword;
     const employeeId = user.employeeId ? String(user.employeeId) : null;
 
-    req.session.lastActivity = Date.now();
     req.session.user = {
       id: String(user._id),
       username: user.username,
@@ -158,6 +161,9 @@ async function login(req, res) {
   } catch (err) {
     console.error('Login error:', err.message || err);
     const msg = err.message || String(err);
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'authController.js:login',message:'login error caught',data:{errName:err?.name,errMsg:msg.slice(0,300),readyState:mongoose.connection.readyState,isDbUnavailableMsg:msg.includes('buffering timed out')||msg.includes('Authentication failed')},timestamp:Date.now(),hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
+    // #endregion
     if (msg.includes('buffering timed out') || msg.includes('Authentication failed')) {
       return res.status(503).json({
         error: 'Database unavailable. Please check that DATABASE_URL is set correctly in your deployment.',
@@ -198,6 +204,13 @@ async function getProfile(req, res) {
       .select('username name email ext role employeeId displayName smtpHost smtpPort smtpSecure smtpUser smtpPassEncrypted defaultEmailBody')
       .lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
+    let phone = '';
+    if (user.employeeId) {
+      const emp = await Employee.findOne({ _id: user.employeeId, companyId: req.session.user.companyId })
+        .select('phone')
+        .lean();
+      phone = emp?.phone || '';
+    }
     let smtpPassword = '';
     if (user.smtpPassEncrypted) {
       try {
@@ -214,6 +227,7 @@ async function getProfile(req, res) {
       ext: user.ext || '',
       role: user.role,
       employee_id: user.employeeId ? String(user.employeeId) : null,
+      phone,
       displayName: user.displayName || '',
       smtpHost: user.smtpHost || '',
       smtpPort: user.smtpPort ?? '',
@@ -234,7 +248,7 @@ async function updateProfile(req, res) {
   const uid = req.session?.user?.id;
   if (!uid) return res.status(401).json({ error: 'Not logged in' });
   const {
-    name, email, ext, newPassword,
+    name, email, ext, newPassword, phone,
     displayName, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPassword, defaultEmailBody,
     link_employee_id,
   } = req.body || {};
@@ -256,8 +270,18 @@ async function updateProfile(req, res) {
     if (email !== undefined) user.email = String(email).trim().toLowerCase() || null;
     if (ext !== undefined) user.ext = String(ext).trim() || null;
     if (newPassword && String(newPassword).trim()) {
-      user.password = bcrypt.hashSync(String(newPassword).trim(), 10);
+      const pwd = String(newPassword).trim();
+      if (pwd.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      user.password = bcrypt.hashSync(pwd, 10);
       user.mustChangePassword = false;
+    }
+    if (phone !== undefined && user.employeeId) {
+      const emp = await Employee.findOne({ _id: user.employeeId, companyId: req.session.user.companyId });
+      if (!emp) return res.status(404).json({ error: 'Employee record not found' });
+      emp.phone = String(phone).trim() || undefined;
+      await emp.save();
     }
     if (displayName !== undefined) user.displayName = String(displayName).trim() || null;
     if (smtpHost !== undefined) user.smtpHost = String(smtpHost).trim() || null;

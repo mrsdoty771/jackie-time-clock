@@ -4,8 +4,6 @@ const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
 const { encrypt, decrypt } = require('../utils/encrypt');
-const { sendSystemEmail } = require('../utils/systemEmail');
-
 function normalizeStatus(status) {
   if (!status) return 'active';
   const s = String(status).toLowerCase();
@@ -128,7 +126,6 @@ async function listEmployees(req, res) {
           id: String(e._id),
           name: e.name,
           employee_number: e.employeeNumber,
-          email: e.email || null,
           phone: e.phone || null,
           active: e.active ? 1 : 0,
           termination_date:
@@ -175,7 +172,6 @@ async function getEmployee(req, res) {
       name: employee.name || '',
       employee_number: employee.employeeNumber || '',
       username: user && user.username ? String(user.username) : '',
-      email: employee.email || '',
       phone: employee.phone || '',
       active: employee.active ? 1 : 0,
       termination_date:
@@ -216,7 +212,7 @@ async function createEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  let { name, employee_number, email, phone, hire_date } = req.body;
+  let { name, employee_number, phone, hire_date } = req.body;
 
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'Name is required' });
@@ -242,13 +238,10 @@ async function createEmployee(req, res) {
   }
 
   try {
-    const emailNorm = email ? String(email).trim().toLowerCase() : null;
-
     const employee = await Employee.create({
       companyId,
       name: String(name).trim(),
       employeeNumber: String(employee_number),
-      email: emailNorm || undefined,
       phone: phone ? String(phone).trim() : undefined,
       hireDate: hireDate || undefined,
       active: true,
@@ -262,7 +255,6 @@ async function createEmployee(req, res) {
       companyId,
       username: loginUsername,
       name: String(name).trim(),
-      email: emailNorm || undefined,
       password: defaultPasswordHash,
       passwordDisplayEncrypted: passwordDisplayEncrypted || undefined,
       role: 'employee',
@@ -270,35 +262,11 @@ async function createEmployee(req, res) {
       mustChangePassword: true,
     });
 
-    let inviteEmailSent = false;
-    if (emailNorm) {
-      try {
-        const sendResult = await sendSystemEmail({
-          to: emailNorm,
-          subject: 'Your time clock login',
-          text: [
-            'An account was created for you on the time clock.',
-            '',
-            `Username: ${loginUsername}`,
-            `Temporary password: ${tempPassword}`,
-            '',
-            'Sign in with your username or this email address. You will be asked to create a new password on first login.',
-          ].join('\n'),
-        });
-        inviteEmailSent = !!sendResult.sent;
-        if (!sendResult.sent) {
-          console.warn('Employee invite email not sent:', sendResult.error);
-        }
-      } catch (mailErr) {
-        console.error('Employee invite email error:', mailErr.message || mailErr);
-      }
-    }
-
-    const response = { success: true, id: String(employee._id), invite_email_sent: inviteEmailSent };
-    if (!inviteEmailSent) {
-      response.temp_password = tempPassword;
-    }
-    return res.json(response);
+    return res.json({
+      success: true,
+      id: String(employee._id),
+      temp_password: tempPassword,
+    });
   } catch (err) {
     console.error('createEmployee error:', err);
     // Duplicate key errors from unique index
@@ -315,7 +283,7 @@ async function updateEmployee(req, res) {
 
   const companyId = req.companyId;
   const { id } = req.params;
-  const { name, employee_number, email, phone, active, password: newPassword, username: bodyUsername } = req.body;
+  const { name, employee_number, phone, active, password: newPassword, username: bodyUsername } = req.body;
 
   if (!name || !employee_number) {
     return res.status(400).json({ error: 'Name and employee number are required' });
@@ -336,7 +304,6 @@ async function updateEmployee(req, res) {
 
     employee.name = String(name).trim();
     employee.employeeNumber = String(employee_number).trim();
-    employee.email = email ? String(email).trim().toLowerCase() : undefined;
     employee.phone = phone ? String(phone).trim() : undefined;
     if (isActive !== undefined) employee.active = isActive;
     if (isActive === true) {
@@ -348,11 +315,8 @@ async function updateEmployee(req, res) {
     const loginUser = await User.findOne({ companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } });
     if (!loginUser) return res.status(404).json({ error: 'Employee user account not found' });
 
-    // Update employee user: display name, email (login), optional username / password (username is not tied to employee number)
+    // Update employee user: display name, optional username / password (username is not tied to employee number)
     const userUpdates = { name: employee.name };
-    if (email !== undefined) {
-      userUpdates.email = employee.email || null;
-    }
     if (bodyUsername !== undefined && bodyUsername !== null) {
       const u = String(bodyUsername).trim();
       if (!u) {

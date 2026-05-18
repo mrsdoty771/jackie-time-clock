@@ -19,44 +19,12 @@ let myClockAdminEmployeeId = null;
 /** Employee-page time-history filter state. */
 let employeeHistoryRangeMode = 'this_week';
 
-// When any API returns 401 (e.g. idle timeout), show login and message
-function handleSessionExpired(message) {
-    currentUser = null;
-    showLoginPage();
-    const msgEl = document.getElementById('message');
-    if (msgEl) {
-        msgEl.textContent = message || 'Session expired due to inactivity. Please log in again.';
-        msgEl.classList.remove('hidden');
-        msgEl.style.color = '#666';
-    }
-}
-
-// Wrap fetch so 401 from API triggers session-expired handling
+// Intercept API 403 PASSWORD_RESET_REQUIRED so the app can show forced password change UI
 const _originalFetch = window.fetch;
 window.fetch = function (url) {
     const urlStr = typeof url === 'string' ? url : (url && url.url) || '';
     const isApi = urlStr.indexOf(API_BASE) !== -1;
     return _originalFetch.apply(this, arguments).then(function (res) {
-        // #region agent log
-        if (isApi && res.status === 401) {
-            var _path = (urlStr.split('?')[0] || '').replace(/^.*\/api/, '/api') || urlStr;
-            fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '46914f' },
-                body: JSON.stringify({
-                    sessionId: '46914f',
-                    hypothesisId: _path.indexOf('/api/login') !== -1 ? 'H1-login-401' : _path.indexOf('/api/me') !== -1 ? 'H2-me-401' : 'H4-other-401',
-                    location: 'app.js:fetch-wrap',
-                    message: 'API returned 401; global handler will show idle banner',
-                    data: { urlSnippet: urlStr.slice(0, 120), pathGuess: _path },
-                    timestamp: Date.now()
-                })
-            }).catch(function () {});
-        }
-        // #endregion
-        if (isApi && res.status === 401) {
-            handleSessionExpired('Session expired due to inactivity. Please log in again.');
-        }
         if (isApi && res.status === 403) {
             return res.clone().json().then(function (data) {
                 if (data && data.code === 'PASSWORD_RESET_REQUIRED') {
@@ -317,6 +285,125 @@ function updateEmployeeNameDisplay() {
     }
 }
 
+function openEmployeeProfileModal() {
+    const modal = document.getElementById('employee-profile-modal');
+    const msgEl = document.getElementById('employee-profile-message');
+    if (!modal) return;
+    if (msgEl) {
+        msgEl.textContent = '';
+        msgEl.style.color = '';
+    }
+    document.getElementById('employee-profile-new-password').value = '';
+    document.getElementById('employee-profile-confirm-password').value = '';
+    loadEmployeeProfileForm();
+    modal.classList.remove('hidden');
+}
+
+function closeEmployeeProfileModal() {
+    document.getElementById('employee-profile-modal')?.classList.add('hidden');
+    document.getElementById('employee-profile-form')?.reset();
+    const msgEl = document.getElementById('employee-profile-message');
+    if (msgEl) {
+        msgEl.textContent = '';
+        msgEl.style.color = '';
+    }
+}
+
+function loadEmployeeProfileForm() {
+    const phoneEl = document.getElementById('employee-profile-phone');
+    const msgEl = document.getElementById('employee-profile-message');
+    if (!phoneEl) return;
+    phoneEl.value = '';
+    fetch(`${API_BASE}/profile`, { credentials: 'include' })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim().startsWith('{')) data = JSON.parse(text);
+                else data = { error: 'Server returned an unexpected response.' };
+            } catch (_) {
+                data = { error: 'Server returned an unexpected response.' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (!ok || data.error) {
+                if (msgEl) {
+                    msgEl.textContent = data.error || 'Could not load profile.';
+                    msgEl.style.color = 'red';
+                }
+                return;
+            }
+            phoneEl.value = data.phone || '';
+        })
+        .catch((err) => {
+            if (msgEl) {
+                msgEl.textContent = err.message || 'Could not load profile.';
+                msgEl.style.color = 'red';
+            }
+        });
+}
+
+function handleEmployeeProfileSubmit(e) {
+    e.preventDefault();
+    const msgEl = document.getElementById('employee-profile-message');
+    const phone = document.getElementById('employee-profile-phone')?.value?.trim() || '';
+    const newPassword = document.getElementById('employee-profile-new-password')?.value || '';
+    const confirmPassword = document.getElementById('employee-profile-confirm-password')?.value || '';
+
+    if (newPassword && newPassword !== confirmPassword) {
+        msgEl.textContent = 'New password and confirm password do not match.';
+        msgEl.style.color = 'red';
+        return;
+    }
+    if (newPassword && newPassword.trim().length < 6) {
+        msgEl.textContent = 'Password must be at least 6 characters.';
+        msgEl.style.color = 'red';
+        return;
+    }
+
+    msgEl.textContent = 'Saving...';
+    msgEl.style.color = '#666';
+
+    const body = { phone };
+    if (newPassword && newPassword.trim()) body.newPassword = newPassword.trim();
+
+    fetch(`${API_BASE}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include',
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim().startsWith('{')) data = JSON.parse(text);
+                else data = { error: 'Server returned an unexpected response.' };
+            } catch (_) {
+                data = { error: 'Server returned an unexpected response.' };
+            }
+            return { ok: res.ok, data };
+        })
+        .then(({ ok, data }) => {
+            if (ok && data.success) {
+                msgEl.textContent = 'Profile updated successfully.';
+                msgEl.style.color = 'green';
+                document.getElementById('employee-profile-new-password').value = '';
+                document.getElementById('employee-profile-confirm-password').value = '';
+                if (currentUser) currentUser.must_change_password = false;
+                setTimeout(closeEmployeeProfileModal, 1200);
+            } else {
+                msgEl.textContent = data.error || 'Failed to update profile.';
+                msgEl.style.color = 'red';
+            }
+        })
+        .catch((err) => {
+            msgEl.textContent = err.message || 'Failed to update profile.';
+            msgEl.style.color = 'red';
+        });
+}
+
 // Event Listeners
 function setupEventListeners() {
     // Login - prevent form submit, handle via fetch
@@ -360,6 +447,36 @@ function setupEventListeners() {
     // Logout
     document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
     document.getElementById('manager-logout-btn')?.addEventListener('click', handleLogout);
+
+    // Employee profile (phone + password)
+    document.getElementById('employee-profile-link')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        openEmployeeProfileModal();
+    });
+    document.getElementById('employee-profile-form')?.addEventListener('submit', handleEmployeeProfileSubmit);
+    document.getElementById('cancel-employee-profile-btn')?.addEventListener('click', closeEmployeeProfileModal);
+    document.querySelector('.close-employee-profile')?.addEventListener('click', closeEmployeeProfileModal);
+    document.getElementById('employee-profile-new-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        togglePasswordVisibility('employee-profile-new-password', 'employee-profile-new-password-toggle');
+    });
+    document.getElementById('employee-profile-confirm-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        togglePasswordVisibility('employee-profile-confirm-password', 'employee-profile-confirm-password-toggle');
+    });
+    const employeeProfilePhoneInput = document.getElementById('employee-profile-phone');
+    if (employeeProfilePhoneInput) {
+        employeeProfilePhoneInput.addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 10) value = value.slice(0, 10);
+            if (value.length >= 6) {
+                value = value.slice(0, 3) + '-' + value.slice(3, 6) + '-' + value.slice(6);
+            } else if (value.length >= 3) {
+                value = value.slice(0, 3) + '-' + value.slice(3);
+            }
+            e.target.value = value;
+        });
+    }
     
     // Employee punches
     document.getElementById('clock-in-btn')?.addEventListener('click', () => handlePunch('clock_in'));
@@ -378,6 +495,7 @@ function setupEventListeners() {
     document.getElementById('employee-history-apply-btn')?.addEventListener('click', () => {
         loadEmployeeRecords();
     });
+    document.getElementById('employee-records-print-btn')?.addEventListener('click', printEmployeeRecords);
     
     // Manager tabs — use currentTarget so clicking the label/text still switches the tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -430,18 +548,34 @@ function setupEventListeners() {
     document.getElementById('cancel-edit-btn')?.addEventListener('click', () => {
         document.getElementById('edit-employee-modal').classList.add('hidden');
         document.getElementById('edit-employee-form').reset();
+        editEmpUsernameManuallyEdited = false;
     });
     
     document.querySelector('.close-edit')?.addEventListener('click', () => {
         document.getElementById('edit-employee-modal').classList.add('hidden');
+        editEmpUsernameManuallyEdited = false;
     });
 
     document.getElementById('edit-emp-username-suggest')?.addEventListener('click', () => {
         const nameVal = document.getElementById('edit-emp-name')?.value || '';
         const u = suggestedLoginUsernameFromFullName(nameVal);
         const input = document.getElementById('edit-emp-username');
-        if (input) input.value = u || input.value;
-        if (!u) showMessage('Enter a name with a first and last name to generate a username.', 'error');
+        if (input && u) {
+            suppressEditUsernameInputEvent = true;
+            input.value = u;
+            suppressEditUsernameInputEvent = false;
+            editEmpUsernameManuallyEdited = true;
+        } else if (!u) {
+            showMessage('Enter a name with a first and last name to generate a username.', 'error');
+        }
+    });
+
+    document.getElementById('edit-emp-username')?.addEventListener('input', () => {
+        if (!suppressEditUsernameInputEvent) editEmpUsernameManuallyEdited = true;
+    });
+
+    document.getElementById('edit-emp-name')?.addEventListener('input', () => {
+        maybeSyncEditUsernameFromName();
     });
 
     document.getElementById('terminate-employee-form')?.addEventListener('submit', handleTerminateEmployeeSubmit);
@@ -1127,6 +1261,112 @@ function displayEmployeeRecords(records) {
     container.innerHTML = daysHtml;
 }
 
+function printEmployeeRecords() {
+    const recordsContainer = document.getElementById('employee-records');
+    if (!recordsContainer) return;
+
+    const recordsHtml = recordsContainer.innerHTML.trim();
+    if (!recordsHtml || recordsHtml.includes('No records found')) {
+        showMessage('No time records to print for the selected date range.', 'error');
+        return;
+    }
+
+    const employeeNameEl = document.getElementById('employee-name');
+    let employeeName = 'Employee';
+    if (employeeNameEl?.textContent) {
+        employeeName = employeeNameEl.textContent.replace(/^Hello,\s*/i, '').trim() || 'Employee';
+    } else if (currentUser?.employee_name) {
+        employeeName = currentUser.employee_name;
+    }
+
+    const companyTitle = document.getElementById('employee-page-title')?.textContent?.trim() || 'Time Clock';
+    const companyName = companyTitle.replace(/\s+Time Clock\s*$/i, '').trim() || companyTitle;
+    const dateRangeLabel = document.getElementById('employee-history-current')?.textContent?.trim()
+        || 'Recent Time Records';
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showMessage('Pop-up blocked. Please allow pop-ups to print your time records.', 'error');
+        return;
+    }
+
+    const printHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Time Records - ${employeeName}</title>
+            <style>
+                @media print {
+                    @page { margin: 1cm; }
+                    body { margin: 0; padding: 20px; }
+                }
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    color: #333;
+                }
+                .report-header {
+                    text-align: center;
+                    margin-bottom: 30px;
+                    border-bottom: 2px solid #667eea;
+                    padding-bottom: 15px;
+                }
+                .report-header h1 {
+                    margin: 0;
+                    color: #667eea;
+                    font-size: 24px;
+                }
+                .report-header p {
+                    margin: 5px 0;
+                    color: #666;
+                }
+                .records-body {
+                    margin-top: 10px;
+                }
+                .record-type {
+                    display: inline-block;
+                    font-weight: 600;
+                    color: #667eea;
+                }
+                .print-footer {
+                    margin-top: 30px;
+                    padding-top: 15px;
+                    border-top: 1px solid #ddd;
+                    text-align: center;
+                    color: #666;
+                    font-size: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="report-header">
+                <h1>${companyName} Time Clock</h1>
+                <p><strong>Employee:</strong> ${employeeName}</p>
+                <p><strong>${dateRangeLabel}</strong></p>
+                <p><strong>Printed:</strong> ${new Date().toLocaleString()}</p>
+            </div>
+            <div class="records-body">
+                ${recordsHtml}
+            </div>
+            <div class="print-footer">
+                <p>Generated by Time Clock System</p>
+            </div>
+        </body>
+        </html>
+    `;
+
+    printWindow.document.write(printHTML);
+    printWindow.document.close();
+
+    printWindow.onload = function () {
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
+    };
+}
+
 // Manager Functions
 function loadInitialData() {
     if (currentUser?.role === 'manager' || currentUser?.role === 'super-admin') {
@@ -1349,7 +1589,7 @@ function updateEmployeeManagementDetails() {
         <div class="employee-card">
             <div class="employee-info">
                 <h4>${escapeHtml(emp.name)}${statusBadge}${roleSegment}</h4>
-                <p>Employee #: ${escapeHtml(emp.employee_number)}${emp.email ? ` | Email: ${escapeHtml(emp.email)}` : ''}${emp.phone ? ` | Phone: ${escapeHtml(emp.phone)}` : ''}</p>
+                <p>Employee #: ${escapeHtml(emp.employee_number)}${emp.phone ? ` | Phone: ${escapeHtml(emp.phone)}` : ''}</p>
                 ${termLine}
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -1606,6 +1846,27 @@ function editEmployee(id) {
 
 const EDIT_PASSWORD_PLACEHOLDER = '••••••••';
 
+/** Edit modal: original values from API when modal opened (for username auto-sync). */
+let editEmpOriginalName = '';
+let editEmpOriginalUsername = '';
+let editEmpUsernameManuallyEdited = false;
+let suppressEditUsernameInputEvent = false;
+
+/** True when username should be replaced with first+last-initial (blank or still employee #). */
+function shouldAutoDefaultLoginUsername(username, employeeNumber) {
+    const u = String(username ?? '').trim();
+    if (!u) return true;
+    const e = String(employeeNumber ?? '').trim();
+    if (!e) return false;
+    if (u === e) return true;
+    if (/^\d+$/.test(u) && /^\d+$/.test(e)) {
+        const nu = parseInt(u, 10);
+        const ne = parseInt(e, 10);
+        if (!Number.isNaN(nu) && !Number.isNaN(ne) && nu === ne) return true;
+    }
+    return false;
+}
+
 /** Same rule as server: first name + last initial, e.g. Josh Doe -> JoshD */
 function suggestedLoginUsernameFromFullName(fullName) {
     const trimmed = String(fullName || '').trim();
@@ -1622,15 +1883,49 @@ function suggestedLoginUsernameFromFullName(fullName) {
     return first + letter[0].toUpperCase();
 }
 
+function resolveEditFormUsername(employee) {
+    const stored = employee.username != null ? String(employee.username).trim() : '';
+    const empNum = String(employee.employee_number ?? '').trim();
+    const name = String(employee.name ?? '').trim();
+    if (!shouldAutoDefaultLoginUsername(stored, empNum)) return stored;
+    const suggested = suggestedLoginUsernameFromFullName(name);
+    return suggested || stored;
+}
+
+function maybeSyncEditUsernameFromName() {
+    if (editEmpUsernameManuallyEdited) return;
+    const userEl = document.getElementById('edit-emp-username');
+    const nameEl = document.getElementById('edit-emp-name');
+    const numberEl = document.getElementById('edit-emp-number');
+    if (!userEl || !nameEl) return;
+    const current = userEl.value.trim();
+    const empNum = numberEl ? numberEl.value.trim() : '';
+    const origU = String(editEmpOriginalUsername ?? '').trim();
+    const origName = String(editEmpOriginalName ?? '').trim();
+    const maySync =
+        !current ||
+        current === empNum ||
+        current === origU ||
+        current === suggestedLoginUsernameFromFullName(origName);
+    if (!maySync) return;
+    const next = suggestedLoginUsernameFromFullName(nameEl.value.trim());
+    if (!next) return;
+    suppressEditUsernameInputEvent = true;
+    userEl.value = next;
+    suppressEditUsernameInputEvent = false;
+}
+
 function populateEditForm(employee) {
+    editEmpOriginalName = String(employee.name ?? '').trim();
+    editEmpOriginalUsername = employee.username != null ? String(employee.username).trim() : '';
+    editEmpUsernameManuallyEdited = false;
+
     document.getElementById('edit-emp-id').value = employee.id;
     document.getElementById('edit-emp-name').value = employee.name || '';
     document.getElementById('edit-emp-number').value = employee.employee_number || '';
     const userEl = document.getElementById('edit-emp-username');
-    if (userEl) userEl.value = employee.username != null ? String(employee.username) : '';
+    if (userEl) userEl.value = resolveEditFormUsername(employee);
     document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
-    const editEmailEl = document.getElementById('edit-emp-email');
-    if (editEmailEl) editEmailEl.value = employee.email || '';
     const pwdInput = document.getElementById('edit-emp-password');
     const hasRealPassword = employee.password != null && String(employee.password).trim() !== '';
     if (hasRealPassword) {
@@ -1697,7 +1992,6 @@ function handleEditEmployee(e) {
         employee_number: document.getElementById('edit-emp-number').value,
         username: (document.getElementById('edit-emp-username')?.value ?? '').trim(),
         phone: document.getElementById('edit-emp-phone').value,
-        email: (document.getElementById('edit-emp-email')?.value ?? '').trim(),
         active: parseInt(document.getElementById('edit-emp-status').value)
     };
     if (newPassword) employee.password = newPassword;
@@ -1725,6 +2019,7 @@ function handleEditEmployee(e) {
         showMessage(newPassword ? 'Employee and password updated successfully' : 'Employee updated successfully', 'success');
         document.getElementById('edit-employee-modal').classList.add('hidden');
         document.getElementById('edit-employee-form').reset();
+        editEmpUsernameManuallyEdited = false;
         const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
         loadEmployees(currentFilter);
         loadEmployeesForPunch();
@@ -1991,7 +2286,6 @@ function handleAddEmployee(e) {
         const employee = {
             name,
             employee_number: num || '',
-            email: document.getElementById('emp-email')?.value ?? '',
             phone: document.getElementById('emp-phone')?.value ?? ''
         };
         if (hireDateInput && hireDateInput.value.trim()) {
@@ -2010,12 +2304,10 @@ function handleAddEmployee(e) {
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : { error: 'Server error' };
             if (data.success) {
                 let detail = '';
-                if (data.invite_email_sent) {
-                    detail = ' Login details were emailed; they must create a new password on first login.';
-                } else if (data.temp_password) {
+                if (data.temp_password) {
                     detail = ` Temporary password (share securely): ${data.temp_password}. They must create a new password on first login.`;
                 } else {
-                    detail = ' A temporary password was generated; configure SMTP in .env to email it automatically.';
+                    detail = ' They must create a new password on first login.';
                 }
                 showMessage('Employee added successfully!' + detail, 'success');
                 document.getElementById('add-employee-modal').classList.add('hidden');

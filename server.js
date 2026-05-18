@@ -8,8 +8,6 @@ const session = require('express-session');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const fs = require('fs');
-
 // 3. Initialize the app
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,45 +49,6 @@ app.use(
   })
 );
 
-// Idle timeout: require re-login after 5 minutes of no activity on any API request
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-app.use('/api', (req, res, next) => {
-  if (!req.session || !req.session.user) return next();
-  const now = Date.now();
-  const last = req.session.lastActivity;
-  if (last != null && now - last > IDLE_TIMEOUT_MS) {
-    // #region agent log
-    try {
-      fs.appendFileSync(
-        path.join(__dirname, 'debug-46914f.log'),
-        JSON.stringify({
-          sessionId: '46914f',
-          hypothesisId: 'H3-idle-middleware',
-          location: 'server.js:idle-timeout',
-          message: 'Session destroyed for idle timeout',
-          data: {
-            apiPath: req.originalUrl && String(req.originalUrl).split('?')[0],
-            lastActivity: last,
-            now,
-            deltaMs: now - last,
-            thresholdMs: IDLE_TIMEOUT_MS
-          },
-          timestamp: Date.now()
-        }) + '\n'
-      );
-    } catch (_e) {}
-    // #endregion
-    req.session.destroy((err) => {
-      if (err) return next(err);
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(401).json({ error: 'Session expired due to inactivity. Please log in again.' });
-    });
-    return;
-  }
-  req.session.lastActivity = now;
-  next();
-});
-
 app.use('/api', blockIfMustChangePassword);
 
 // 6. Connect Routes
@@ -120,12 +79,22 @@ app.listen(PORT, '0.0.0.0', () => {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is not set. DB connection skipped.');
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'server.js:db-connect',message:'DATABASE_URL missing',data:{hasUrl:false},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return;
   }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'server.js:db-connect',message:'mongoose.connect starting',data:{hasUrl:true,urlLength:String(url).length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
 
   mongoose.connect(url, { serverSelectionTimeoutMS: 10000 })
     .then(async () => {
       console.log('Connected to MongoDB');
+      // #region agent log
+      fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'server.js:db-connect',message:'mongoose connected',data:{readyState:mongoose.connection.readyState},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       try {
         // Ensure punch indexes (including duplicate-prevention index) are created.
         await Punch.createIndexes();
@@ -203,5 +172,10 @@ app.listen(PORT, '0.0.0.0', () => {
         }
       }
     })
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch(err => {
+      console.error('MongoDB connection error:', err);
+      // #region agent log
+      fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'server.js:db-connect',message:'mongoose connect failed',data:{errName:err?.name,errMsg:String(err?.message||err).slice(0,200)},timestamp:Date.now(),hypothesisId:'B,E'})}).catch(()=>{});
+      // #endregion
+    });
 });
