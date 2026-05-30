@@ -537,31 +537,55 @@
 
     <div id="add-employee-modal" class="modal hidden">
         <div class="modal-content">
-            <span class="close">&times;</span>
-            <h3>Add Employee</h3>
-            <form id="add-employee-form">
-                <div class="form-group">
-                    <label for="emp-name">Name *</label>
-                    <input type="text" id="emp-name" required>
+            <span class="close-add-employee" id="close-add-employee-btn" role="button" tabindex="0" aria-label="Close">&times;</span>
+            <div id="add-employee-form-panel">
+                <h3>Add Employee</h3>
+                <form id="add-employee-form">
+                    <div class="form-group">
+                        <label for="emp-name">Name *</label>
+                        <input type="text" id="emp-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="emp-number">Employee Number</label>
+                        <input type="text" id="emp-number" placeholder="Leave blank to auto-generate">
+                    </div>
+                    <div class="form-group">
+                        <label for="emp-phone">Phone</label>
+                        <input type="tel" id="emp-phone">
+                    </div>
+                    <div class="form-group">
+                        <label for="emp-hire-date">Hire Date</label>
+                        <input type="date" id="emp-hire-date">
+                    </div>
+                    <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. Their login username is generated from their name (first name + last initial, e.g. Josh Doe → JoshD), with a number added if needed for uniqueness. You can change it anytime under Edit Employee. After you add them, credentials appear on the next screen—share them securely.</p>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancel-add-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="add-employee-submit-btn">Add Employee</button>
+                    </div>
+                </form>
+            </div>
+            <div id="add-employee-success-panel" class="hidden">
+                <h3>Employee Added Successfully!</h3>
+                <p style="color: #666; font-size: 14px; margin: 0 0 16px 0;">Share these login credentials with the employee. They must create a new password on first sign-in.</p>
+                <div class="add-employee-credentials">
+                    <div class="add-employee-credential-row">
+                        <span class="add-employee-credential-label">Username</span>
+                        <strong id="add-employee-success-username" class="add-employee-credential-value"></strong>
+                    </div>
+                    <div class="add-employee-credential-row">
+                        <span class="add-employee-credential-label">Temporary Password</span>
+                        <strong id="add-employee-success-password" class="add-employee-credential-value"></strong>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="emp-number">Employee Number</label>
-                    <input type="text" id="emp-number" placeholder="Leave blank to auto-generate">
+                <div id="add-employee-success-message" style="margin: 12px 0; font-size: 14px;"></div>
+                <div class="form-actions add-employee-success-actions">
+                    <button type="button" class="btn btn-secondary" id="add-employee-copy-credentials-btn">Copy Credentials</button>
+                    <button type="button" class="btn btn-secondary" id="add-employee-send-login-text-btn">Send Login Text</button>
                 </div>
-                <div class="form-group">
-                    <label for="emp-phone">Phone</label>
-                    <input type="tel" id="emp-phone">
+                <div class="form-actions" style="margin-top: 8px;">
+                    <button type="button" class="btn btn-primary" id="add-employee-done-btn">Done</button>
                 </div>
-                <div class="form-group">
-                    <label for="emp-hire-date">Hire Date</label>
-                    <input type="date" id="emp-hire-date">
-                </div>
-                <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. Their login username is generated from their name (first name + last initial, e.g. Josh Doe → JoshD), with a number added if needed for uniqueness. You can change it anytime under Edit Employee. The temporary password is shown in the confirmation message—share it with the employee securely.</p>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" id="cancel-add-btn">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="add-employee-submit-btn">Add Employee</button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
 
@@ -591,6 +615,10 @@
                 <div class="form-group">
                     <label for="edit-emp-phone">Phone</label>
                     <input type="tel" id="edit-emp-phone">
+                </div>
+                <div class="form-group edit-employee-login-actions">
+                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn">Resend login credentials</button>
+                    <div id="edit-employee-send-login-message" class="edit-employee-send-login-message" aria-live="polite"></div>
                 </div>
                 <div class="form-group">
                     <label for="edit-emp-password">New Password</label>

@@ -5,7 +5,15 @@ const INVITE_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 
 function getPublicBaseUrl() {
   const raw = process.env.BASE_URL || process.env.APP_URL || '';
-  return String(raw).trim().replace(/\/+$/, '');
+  const trimmed = String(raw).trim().replace(/\/+$/, '');
+  if (trimmed) return trimmed;
+
+  if (process.env.NODE_ENV !== 'production') {
+    const port = process.env.PORT || 3000;
+    return `http://127.0.0.1:${port}`;
+  }
+
+  return '';
 }
 
 /**

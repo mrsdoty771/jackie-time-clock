@@ -406,7 +406,7 @@ body {
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 
-#add-employee-modal .close {
+#add-employee-modal .close-add-employee {
     position: absolute;
     top: 12px;
     right: 12px;
@@ -418,8 +418,49 @@ body {
     user-select: none;
 }
 
-#add-employee-modal .close:hover {
+#add-employee-modal .close-add-employee:hover {
     color: #000;
+}
+
+.add-employee-credentials {
+    text-align: left;
+    background: #f5f7fa;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+}
+
+.add-employee-credential-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: baseline;
+    margin-bottom: 10px;
+}
+
+.add-employee-credential-row:last-child {
+    margin-bottom: 0;
+}
+
+.add-employee-credential-label {
+    flex: 0 0 140px;
+    font-size: 13px;
+    color: #666;
+}
+
+.add-employee-credential-value {
+    flex: 1;
+    font-size: 16px;
+    word-break: break-all;
+}
+
+#add-employee-success-panel .add-employee-success-actions {
+    flex-wrap: wrap;
+}
+
+#add-employee-success-panel .add-employee-success-actions .btn {
+    min-width: 140px;
 }
 
 #edit-employee-modal .close-edit {
@@ -432,6 +473,39 @@ body {
     color: #333;
     padding: 4px 8px;
     user-select: none;
+}
+
+.edit-employee-login-actions .btn {
+    width: auto;
+}
+
+.edit-employee-send-login-message {
+    margin-top: 8px;
+    font-size: 14px;
+    min-height: 1.25em;
+}
+
+.edit-manager-rights-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.edit-manager-rights-actions .btn {
+    width: auto;
+    flex: 1;
+    min-width: 140px;
+}
+
+@media (max-width: 480px) {
+    .edit-manager-rights-actions {
+        flex-direction: column;
+    }
+
+    .edit-manager-rights-actions .btn {
+        width: 100%;
+        flex: none;
+    }
 }
 
 #edit-employee-modal .close-edit:hover {

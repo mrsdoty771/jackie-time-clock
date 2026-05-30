@@ -505,38 +505,19 @@ function setupEventListeners() {
         });
     });
     
-    // Employee management
-    document.getElementById('add-employee-btn')?.addEventListener('click', () => {
-        document.getElementById('add-employee-modal').classList.remove('hidden');
-        const empNumberInput = document.getElementById('emp-number');
-        if (empNumberInput) {
-            empNumberInput.value = '';
-            empNumberInput.placeholder = 'Loading…';
-            fetch(`${API_BASE}/employees/next-number`, { credentials: 'include' })
-                .then(res => res.ok ? res.json() : null)
-                .then(data => {
-                    empNumberInput.placeholder = 'Leave blank to auto-generate';
-                    if (data && data.nextNumber) empNumberInput.value = data.nextNumber;
-                })
-                .catch(() => {
-                    empNumberInput.placeholder = 'Leave blank to auto-generate';
-                });
-        }
-    });
-    
+    // Employee management — Add Employee modal
+    document.getElementById('add-employee-btn')?.addEventListener('click', openAddEmployeeModal);
     document.getElementById('add-employee-form')?.addEventListener('submit', handleAddEmployee);
     document.getElementById('add-employee-submit-btn')?.addEventListener('click', (e) => {
         e.preventDefault();
         handleAddEmployee(e);
     });
-    document.getElementById('cancel-add-btn')?.addEventListener('click', () => {
-        document.getElementById('add-employee-modal').classList.add('hidden');
-        document.getElementById('add-employee-form').reset();
-    });
-    
-    document.querySelector('.close')?.addEventListener('click', () => {
-        document.getElementById('add-employee-modal').classList.add('hidden');
-    });
+    document.getElementById('cancel-add-btn')?.addEventListener('click', closeAddEmployeeModal);
+    document.getElementById('close-add-employee-btn')?.addEventListener('click', closeAddEmployeeModal);
+    document.getElementById('add-employee-done-btn')?.addEventListener('click', closeAddEmployeeModal);
+    document.getElementById('add-employee-copy-credentials-btn')?.addEventListener('click', copyAddEmployeeCredentials);
+    document.getElementById('add-employee-send-login-text-btn')?.addEventListener('click', sendAddEmployeeLoginText);
+    document.getElementById('edit-employee-send-login-text-btn')?.addEventListener('click', sendEditEmployeeLoginText);
 
     // Grant manager rights modal
     document.getElementById('confirm-grant-manager-btn')?.addEventListener('click', handleConfirmGrantManager);
@@ -549,11 +530,13 @@ function setupEventListeners() {
         document.getElementById('edit-employee-modal').classList.add('hidden');
         document.getElementById('edit-employee-form').reset();
         editEmpUsernameManuallyEdited = false;
+        setEditEmployeeSendLoginMessage('', false);
     });
     
     document.querySelector('.close-edit')?.addEventListener('click', () => {
         document.getElementById('edit-employee-modal').classList.add('hidden');
         editEmpUsernameManuallyEdited = false;
+        setEditEmployeeSendLoginMessage('', false);
     });
 
     document.getElementById('edit-emp-username-suggest')?.addEventListener('click', () => {
@@ -600,6 +583,7 @@ function setupEventListeners() {
                 value = value.slice(0, 3) + '-' + value.slice(3);
             }
             e.target.value = value;
+            updateEditEmployeeSendLoginTextButton(e.target.value);
         });
     }
     
@@ -1926,6 +1910,8 @@ function populateEditForm(employee) {
     const userEl = document.getElementById('edit-emp-username');
     if (userEl) userEl.value = resolveEditFormUsername(employee);
     document.getElementById('edit-emp-phone').value = formatPhoneNumber(employee.phone || '');
+    setEditEmployeeSendLoginMessage('', false);
+    updateEditEmployeeSendLoginTextButton(employee.phone || '');
     const pwdInput = document.getElementById('edit-emp-password');
     const hasRealPassword = employee.password != null && String(employee.password).trim() !== '';
     if (hasRealPassword) {
@@ -1955,7 +1941,7 @@ function populateEditForm(employee) {
             <div class="manager-rights-section" style="padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
                 <strong>Manager rights</strong>
                 ${hasManager ? '<p style="margin: 6px 0 0 0; color: #666; font-size: 14px;">Has manager rights. They see the manager dashboard.</p>' : ''}
-                <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                <div class="edit-manager-rights-actions" style="margin-top: 10px;">
                     <button type="button" class="btn btn-primary btn-small" onclick="openGrantManagerModalFromEditModal('${empIdEsc}')" ${hasManager ? 'disabled' : ''}>Grant manager rights</button>
                     <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRightsFromEditModal('${empIdEsc}')" ${!hasManager ? 'disabled' : ''}>Take away manager rights</button>
                 </div>
@@ -2270,6 +2256,204 @@ function handleConfirmGrantManager() {
         });
 }
 
+function prefetchAddEmployeeNumber() {
+    const empNumberInput = document.getElementById('emp-number');
+    if (!empNumberInput) return;
+    empNumberInput.value = '';
+    empNumberInput.placeholder = 'Loading…';
+    fetch(`${API_BASE}/employees/next-number`, { credentials: 'include' })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            empNumberInput.placeholder = 'Leave blank to auto-generate';
+            if (data && data.nextNumber) empNumberInput.value = data.nextNumber;
+        })
+        .catch(() => {
+            empNumberInput.placeholder = 'Leave blank to auto-generate';
+        });
+}
+
+function openAddEmployeeModal() {
+    const modal = document.getElementById('add-employee-modal');
+    if (!modal) return;
+    showAddEmployeeForm();
+    modal.classList.remove('hidden');
+    prefetchAddEmployeeNumber();
+}
+
+function closeAddEmployeeModal() {
+    const modal = document.getElementById('add-employee-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    showAddEmployeeForm();
+}
+
+function showAddEmployeeForm() {
+    document.getElementById('add-employee-form-panel')?.classList.remove('hidden');
+    document.getElementById('add-employee-success-panel')?.classList.add('hidden');
+    document.getElementById('add-employee-form')?.reset();
+    const msgEl = document.getElementById('add-employee-success-message');
+    if (msgEl) {
+        msgEl.textContent = '';
+        msgEl.style.color = '';
+    }
+    const modal = document.getElementById('add-employee-modal');
+    if (modal) {
+        delete modal.dataset.employeeId;
+        delete modal.dataset.phone;
+        delete modal.dataset.username;
+        delete modal.dataset.tempPassword;
+    }
+}
+
+function setAddEmployeeSuccessMessage(text, isError) {
+    const msgEl = document.getElementById('add-employee-success-message');
+    if (!msgEl) return;
+    msgEl.textContent = text || '';
+    msgEl.style.color = isError ? '#c0392b' : '#2e7d32';
+}
+
+function updateAddEmployeeSendLoginTextButton(phone) {
+    const btn = document.getElementById('add-employee-send-login-text-btn');
+    if (!btn) return;
+    const hasPhone = !!(phone && String(phone).trim());
+    btn.disabled = !hasPhone;
+    if (hasPhone) {
+        btn.removeAttribute('title');
+    } else {
+        btn.title = 'Add a phone number to send a login text. Edit the employee later to add one.';
+    }
+}
+
+function showAddEmployeeSuccess({ username, tempPassword, employeeId, phone }) {
+    document.getElementById('add-employee-form-panel')?.classList.add('hidden');
+    document.getElementById('add-employee-success-panel')?.classList.remove('hidden');
+    const usernameEl = document.getElementById('add-employee-success-username');
+    const passwordEl = document.getElementById('add-employee-success-password');
+    if (usernameEl) usernameEl.textContent = username || '—';
+    if (passwordEl) passwordEl.textContent = tempPassword || '—';
+    setAddEmployeeSuccessMessage('', false);
+    updateAddEmployeeSendLoginTextButton(phone);
+    const modal = document.getElementById('add-employee-modal');
+    if (modal) {
+        if (employeeId) modal.dataset.employeeId = String(employeeId);
+        modal.dataset.phone = phone ? String(phone).trim() : '';
+        modal.dataset.username = username || '';
+        modal.dataset.tempPassword = tempPassword || '';
+    }
+}
+
+async function copyAddEmployeeCredentials() {
+    const modal = document.getElementById('add-employee-modal');
+    const username = modal?.dataset.username || document.getElementById('add-employee-success-username')?.textContent || '';
+    const tempPassword = modal?.dataset.tempPassword || document.getElementById('add-employee-success-password')?.textContent || '';
+    const text = `Username: ${username}\nTemporary Password: ${tempPassword}`;
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        setAddEmployeeSuccessMessage('Credentials copied to clipboard.', false);
+    } catch (_) {
+        setAddEmployeeSuccessMessage('Could not copy. Select and copy the credentials manually.', true);
+    }
+}
+
+function setEditEmployeeSendLoginMessage(text, isError) {
+    const msgEl = document.getElementById('edit-employee-send-login-message');
+    if (!msgEl) return;
+    msgEl.textContent = text || '';
+    msgEl.style.color = isError ? '#c0392b' : '#2e7d32';
+}
+
+function updateEditEmployeeSendLoginTextButton(phone) {
+    const btn = document.getElementById('edit-employee-send-login-text-btn');
+    if (!btn) return;
+    const hasPhone = !!(phone && String(phone).replace(/\D/g, '').trim());
+    btn.disabled = !hasPhone;
+    if (hasPhone) {
+        btn.removeAttribute('title');
+    } else {
+        btn.title = 'Add a phone number and save the employee to send login credentials by text.';
+    }
+}
+
+function sendEditEmployeeLoginText() {
+    const employeeId = document.getElementById('edit-emp-id')?.value;
+    if (!employeeId) {
+        setEditEmployeeSendLoginMessage('Employee ID missing. Close and try again.', true);
+        return;
+    }
+    const btn = document.getElementById('edit-employee-send-login-text-btn');
+    if (btn?.disabled) return;
+    const phone = document.getElementById('edit-emp-phone')?.value || '';
+    if (btn) btn.disabled = true;
+    setEditEmployeeSendLoginMessage('Sending login text…', false);
+    fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: '{}',
+    })
+        .then(async (res) => {
+            const contentType = res.headers.get('content-type');
+            const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
+            if (res.ok && data.success) {
+                setEditEmployeeSendLoginMessage(data.message || 'Login text sent.', false);
+            } else {
+                setEditEmployeeSendLoginMessage(data.error || 'Failed to send login text.', true);
+            }
+        })
+        .catch(() => {
+            setEditEmployeeSendLoginMessage('Could not send login text. Check your connection and try again.', true);
+        })
+        .finally(() => {
+            updateEditEmployeeSendLoginTextButton(phone);
+        });
+}
+
+function sendAddEmployeeLoginText() {
+    const modal = document.getElementById('add-employee-modal');
+    const employeeId = modal?.dataset.employeeId;
+    if (!employeeId) {
+        setAddEmployeeSuccessMessage('Employee ID missing. Close and try again.', true);
+        return;
+    }
+    const btn = document.getElementById('add-employee-send-login-text-btn');
+    if (btn?.disabled) return;
+    if (btn) btn.disabled = true;
+    setAddEmployeeSuccessMessage('Sending login text…', false);
+    fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: '{}',
+    })
+        .then(async (res) => {
+            const contentType = res.headers.get('content-type');
+            const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
+            if (res.ok && data.success) {
+                setAddEmployeeSuccessMessage(data.message || 'Login text sent.', false);
+            } else {
+                setAddEmployeeSuccessMessage(data.error || 'Failed to send login text.', true);
+            }
+        })
+        .catch(() => {
+            setAddEmployeeSuccessMessage('Could not send login text. Check your connection and try again.', true);
+        })
+        .finally(() => {
+            updateAddEmployeeSendLoginTextButton(modal?.dataset.phone || '');
+        });
+}
+
 function handleAddEmployee(e) {
     e.preventDefault();
     const nameEl = document.getElementById('emp-name');
@@ -2280,18 +2464,22 @@ function handleAddEmployee(e) {
     }
     const hireDateInput = document.getElementById('emp-hire-date');
     const empNumberInput = document.getElementById('emp-number');
+    const phoneRaw = document.getElementById('emp-phone')?.value ?? '';
     let employeeNumber = empNumberInput ? empNumberInput.value.trim() : '';
 
     function doSubmit(num) {
         const employee = {
             name,
             employee_number: num || '',
-            phone: document.getElementById('emp-phone')?.value ?? ''
+            phone: phoneRaw
         };
         if (hireDateInput && hireDateInput.value.trim()) {
             employee.hire_date = hireDateInput.value;
         }
         if (!employee.employee_number) delete employee.employee_number;
+
+        const submitBtn = document.getElementById('add-employee-submit-btn');
+        if (submitBtn) submitBtn.disabled = true;
 
         fetch(`${API_BASE}/employees`, {
             method: 'POST',
@@ -2303,15 +2491,13 @@ function handleAddEmployee(e) {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : { error: 'Server error' };
             if (data.success) {
-                let detail = '';
-                if (data.temp_password) {
-                    detail = ` Temporary password (share securely): ${data.temp_password}. They must create a new password on first login.`;
-                } else {
-                    detail = ' They must create a new password on first login.';
-                }
-                showMessage('Employee added successfully!' + detail, 'success');
-                document.getElementById('add-employee-modal').classList.add('hidden');
-                document.getElementById('add-employee-form').reset();
+                showMessage('Employee added successfully!', 'success');
+                showAddEmployeeSuccess({
+                    username: data.username,
+                    tempPassword: data.temp_password,
+                    employeeId: data.id,
+                    phone: phoneRaw,
+                });
                 const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
                 loadEmployees(currentFilter);
                 loadEmployeesForPunch();
@@ -2323,6 +2509,9 @@ function handleAddEmployee(e) {
         .catch((err) => {
             console.error('Add employee error:', err);
             showMessage('Error adding employee. Check the console or try again.', 'error');
+        })
+        .finally(() => {
+            if (submitBtn) submitBtn.disabled = false;
         });
     }
 
