@@ -1,5 +1,6 @@
 const CompanySettings = require('../models/CompanySettings');
 const Employee = require('../models/Employee');
+const { isSystemClockEmployee } = require('../utils/systemEmployee');
 
 function normalizeCompanyId(raw) {
   const v = String(raw || '').trim();
@@ -29,10 +30,19 @@ async function getCompanySettings(req, res) {
     }
     const startDay = Number.isInteger(settings.payWeekStartDay) ? settings.payWeekStartDay : 1;
     const endDay = Number.isInteger(settings.payWeekEndDay) ? settings.payWeekEndDay : 0;
+    let companyAdminEmployeeId = settings.companyAdminEmployeeId ? String(settings.companyAdminEmployeeId) : null;
+    if (companyAdminEmployeeId) {
+      const adminEmp = await Employee.findOne({ _id: companyAdminEmployeeId, companyId })
+        .select('employeeNumber')
+        .lean();
+      if (!adminEmp || isSystemClockEmployee(adminEmp)) {
+        companyAdminEmployeeId = null;
+      }
+    }
     return res.json({
       company_name: settings.companyName || 'MVC',
       logo_data: settings.logoData || null,
-      company_admin_employee_id: settings.companyAdminEmployeeId ? String(settings.companyAdminEmployeeId) : null,
+      company_admin_employee_id: companyAdminEmployeeId,
       timezone: settings.timezone && String(settings.timezone).trim() ? String(settings.timezone).trim() : 'UTC',
       pay_week_start_day: startDay,
       pay_week_end_day: endDay,
@@ -94,9 +104,12 @@ async function updateCompanySettings(req, res) {
       if (!raw) {
         update.companyAdminEmployeeId = null;
       } else {
-        const emp = await Employee.findOne({ _id: raw, companyId }).select({ _id: 1 }).lean();
+        const emp = await Employee.findOne({ _id: raw, companyId }).select({ _id: 1, employeeNumber: 1 }).lean();
         if (!emp) {
           return res.status(400).json({ error: 'Selected company admin employee was not found in this company' });
+        }
+        if (isSystemClockEmployee(emp)) {
+          return res.status(400).json({ error: 'That employee cannot be used as company admin' });
         }
         update.companyAdminEmployeeId = emp._id;
       }

@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Employee = require('../models/Employee');
 const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
+const { redeemLoginInvite } = require('../utils/loginInvite');
 
 function normalizeCompanyId(raw) {
   const companyId = String(raw || '').trim();
@@ -540,5 +541,65 @@ async function resetPassword(req, res) {
   }
 }
 
-module.exports = { login, logout, me, getProfile, updateProfile, testEmail, getLoginOptions, resetPassword };
+// GET /api/login-invite/:token — public; one-time redeem for SMS login link
+async function getLoginInvite(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const token = String(req.params.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'Invalid login link' });
+
+  try {
+    const invite = await redeemLoginInvite(token);
+    if (!invite) return res.status(404).json({ error: 'This login link is invalid or has expired.' });
+
+    const user = await User.findOne({
+      _id: invite.userId,
+      companyId: invite.companyId,
+      role: { $in: ['employee', 'manager', 'super-admin'] },
+    })
+      .select('username passwordDisplayEncrypted mustChangePassword employeeId')
+      .lean();
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+
+    if (user.employeeId) {
+      const emp = await Employee.findOne({ _id: user.employeeId, companyId: invite.companyId })
+        .select('active')
+        .lean();
+      if (emp && !emp.active) {
+        return res.status(403).json({ error: 'This employee account is inactive.' });
+      }
+    }
+
+    let password = '';
+    if (user.passwordDisplayEncrypted) {
+      try {
+        password = decrypt(user.passwordDisplayEncrypted) || '';
+      } catch (_) {}
+    }
+    if (!password) {
+      return res.status(400).json({ error: 'Login link could not be prepared. Ask your manager to send a new text.' });
+    }
+
+    return res.json({
+      companyId: invite.companyId,
+      username: user.username,
+      password,
+      must_change_password: !!user.mustChangePassword,
+    });
+  } catch (err) {
+    console.error('getLoginInvite error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+module.exports = {
+  login,
+  logout,
+  me,
+  getProfile,
+  updateProfile,
+  testEmail,
+  getLoginOptions,
+  resetPassword,
+  getLoginInvite,
+};
 

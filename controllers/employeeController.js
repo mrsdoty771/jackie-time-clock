@@ -3,7 +3,56 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
+const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
+const { createLoginInvite, getPublicBaseUrl } = require('../utils/loginInvite');
+const { sendSmsToPhone } = require('../utils/sms');
+const {
+  isSystemClockEmployee,
+  excludeSystemClockEmployeesFilter,
+  SYSTEM_CLOCK_EMPLOYEE_NUMBER,
+} = require('../utils/systemEmployee');
+
+function generateTempPassword() {
+  return crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
+}
+
+async function getCompanyDisplayName(companyId) {
+  const settings = await CompanySettings.findOne({ companyId }).select('companyName').lean();
+  return (settings && settings.companyName) ? String(settings.companyName).trim() : 'MVC Time Clock';
+}
+
+async function sendLoginTextForEmployeeUser(companyId, employee, user) {
+  const phone = employee.phone ? String(employee.phone).trim() : '';
+  if (!phone) {
+    return { ok: false, error: 'Employee has no phone number on file.' };
+  }
+  if (!getPublicBaseUrl()) {
+    return {
+      ok: false,
+      error: 'BASE_URL is not set in .env. Add your public app URL (e.g. https://clock.example.com) so login links work.',
+    };
+  }
+  let tempPassword = '';
+  if (user.passwordDisplayEncrypted) {
+    try {
+      tempPassword = decrypt(user.passwordDisplayEncrypted) || '';
+    } catch (_) {}
+  }
+  if (!tempPassword) {
+    tempPassword = generateTempPassword();
+    user.password = bcrypt.hashSync(tempPassword, 10);
+    user.passwordDisplayEncrypted = encrypt(tempPassword) || undefined;
+    user.mustChangePassword = true;
+    await user.save();
+  }
+  const { loginUrl } = await createLoginInvite(companyId, user._id);
+  const companyLabel = await getCompanyDisplayName(companyId);
+  const body = `${companyLabel} login — tap to sign in: ${loginUrl}`;
+  const sms = await sendSmsToPhone(phone, body);
+  if (!sms.ok) return sms;
+  return { ok: true, message: 'Login text sent.', loginUrl };
+}
 function normalizeStatus(status) {
   if (!status) return 'active';
   const s = String(status).toLowerCase();
@@ -53,7 +102,7 @@ async function listPublicEmployees(req, res) {
   }
 
   try {
-    const employees = await Employee.find({ companyId, active: true })
+    const employees = await Employee.find({ companyId, active: true, ...excludeSystemClockEmployeesFilter() })
       .select('_id name employeeNumber')
       .sort({ name: 1 })
       .lean();
@@ -98,7 +147,7 @@ async function listEmployees(req, res) {
       ]);
     }
 
-    const filter = { companyId };
+    const filter = { companyId, ...excludeSystemClockEmployeesFilter() };
     if (status === 'active') filter.active = true;
     if (status === 'inactive') filter.active = false;
 
@@ -157,6 +206,9 @@ async function getEmployee(req, res) {
   try {
     const employee = await Employee.findOne({ _id: id, companyId }).lean();
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
     const user = await User.findOne({ companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } })
       .select('passwordDisplayEncrypted username role')
       .lean();
@@ -193,7 +245,9 @@ async function getNextEmployeeNumber(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const companyId = req.companyId;
   try {
-    const existing = await Employee.find({ companyId }).select('employeeNumber').lean();
+    const existing = await Employee.find({ companyId, ...excludeSystemClockEmployeesFilter() })
+      .select('employeeNumber')
+      .lean();
     let maxNum = 0;
     for (const e of existing || []) {
       const n = parseInt(e.employeeNumber, 10);
@@ -212,21 +266,22 @@ async function createEmployee(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   const companyId = req.companyId;
-  let { name, employee_number, phone, hire_date } = req.body;
+  let { name, employee_number, phone, username: bodyUsername, password: bodyPassword, active, send_login_text } =
+    req.body || {};
 
   if (!name || !String(name).trim()) {
     return res.status(400).json({ error: 'Name is required' });
   }
 
-  const hireDate = hire_date && String(hire_date).trim() ? new Date(hire_date) : undefined;
-  if (hireDate && isNaN(hireDate.getTime())) {
-    return res.status(400).json({ error: 'Invalid hire date' });
-  }
-
   const raw = employee_number == null ? '' : String(employee_number).trim();
-  const numTrimmed = (raw === '' || raw === 'undefined') ? '' : raw;
+  const numTrimmed = raw === '' || raw === 'undefined' ? '' : raw;
+  if (numTrimmed && numTrimmed.toUpperCase() === SYSTEM_CLOCK_EMPLOYEE_NUMBER) {
+    return res.status(400).json({ error: 'That employee number is reserved for system use' });
+  }
   if (!numTrimmed) {
-    const existing = await Employee.find({ companyId }).select('employeeNumber').lean();
+    const existing = await Employee.find({ companyId, ...excludeSystemClockEmployeesFilter() })
+      .select('employeeNumber')
+      .lean();
     let maxNum = 0;
     for (const e of existing || []) {
       const n = parseInt(e.employeeNumber, 10);
@@ -237,21 +292,40 @@ async function createEmployee(req, res) {
     employee_number = numTrimmed;
   }
 
+  let loginUsername = bodyUsername != null ? String(bodyUsername).trim() : '';
+  if (loginUsername) {
+    if (!/^[a-zA-Z0-9_]+$/.test(loginUsername)) {
+      return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
+    }
+    if (loginUsername.length < 2 || loginUsername.length > 64) {
+      return res.status(400).json({ error: 'Username must be 2–64 characters' });
+    }
+    const taken = await User.findOne({ companyId, username: loginUsername }).select('_id').lean();
+    if (taken) return res.status(400).json({ error: 'That username is already taken in your company' });
+  } else {
+    loginUsername = await allocateUniqueLoginUsername(companyId, String(name).trim(), String(employee_number).trim());
+  }
+
+  let tempPassword = bodyPassword != null ? String(bodyPassword).trim() : '';
+  if (tempPassword && tempPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  if (!tempPassword) tempPassword = generateTempPassword();
+
+  const isActive = active === undefined ? true : !!(active === true || active === 1 || active === '1');
+
   try {
     const employee = await Employee.create({
       companyId,
       name: String(name).trim(),
       employeeNumber: String(employee_number),
       phone: phone ? String(phone).trim() : undefined,
-      hireDate: hireDate || undefined,
-      active: true,
+      active: isActive,
     });
 
-    const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
     const defaultPasswordHash = bcrypt.hashSync(tempPassword, 10);
     const passwordDisplayEncrypted = encrypt(tempPassword);
-    const loginUsername = await allocateUniqueLoginUsername(companyId, String(name).trim(), String(employee_number).trim());
-    await User.create({
+    const user = await User.create({
       companyId,
       username: loginUsername,
       name: String(name).trim(),
@@ -262,18 +336,64 @@ async function createEmployee(req, res) {
       mustChangePassword: true,
     });
 
-    return res.json({
+    const out = {
       success: true,
       id: String(employee._id),
+      username: loginUsername,
       temp_password: tempPassword,
-    });
+    };
+
+    if (send_login_text) {
+      const smsResult = await sendLoginTextForEmployeeUser(companyId, employee, user);
+      if (!smsResult.ok) {
+        return res.status(400).json({
+          success: true,
+          id: String(employee._id),
+          username: loginUsername,
+          temp_password: tempPassword,
+          sms_error: smsResult.error,
+        });
+      }
+      out.sms_sent = true;
+      out.message = smsResult.message;
+    }
+
+    return res.json(out);
   } catch (err) {
     console.error('createEmployee error:', err);
-    // Duplicate key errors from unique index
     if (err && err.code === 11000) {
-      return res.status(400).json({ error: 'Employee number already exists' });
+      return res.status(400).json({ error: 'Employee number or username already exists' });
     }
     return res.status(500).json({ error: 'Database error' });
+  }
+}
+
+// POST /api/employees/:id/send-login-text (manager only)
+async function sendEmployeeLoginText(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const companyId = req.companyId;
+  const { id } = req.params;
+
+  try {
+    const employee = await Employee.findOne({ _id: id, companyId }).lean();
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (isSystemClockEmployee(employee)) return res.status(404).json({ error: 'Employee not found' });
+
+    const user = await User.findOne({
+      companyId,
+      employeeId: employee._id,
+      role: { $in: ['employee', 'manager'] },
+    });
+    if (!user) {
+      return res.status(400).json({ error: 'This employee does not have a login account yet.' });
+    }
+
+    const smsResult = await sendLoginTextForEmployeeUser(companyId, employee, user);
+    if (!smsResult.ok) return res.status(400).json({ error: smsResult.error });
+    return res.json({ success: true, message: smsResult.message });
+  } catch (err) {
+    console.error('sendEmployeeLoginText error:', err);
+    return res.status(500).json({ error: 'Server error' });
   }
 }
 
@@ -301,6 +421,12 @@ async function updateEmployee(req, res) {
 
     const employee = await Employee.findOne({ _id: id, companyId });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+    if (String(employee_number).trim().toUpperCase() === SYSTEM_CLOCK_EMPLOYEE_NUMBER) {
+      return res.status(400).json({ error: 'That employee number is reserved for system use' });
+    }
 
     employee.name = String(name).trim();
     employee.employeeNumber = String(employee_number).trim();
@@ -379,8 +505,11 @@ async function setEmployeePassword(req, res) {
   }
 
   try {
-    const employee = await Employee.findOne({ _id: id, companyId }).select('_id').lean();
+    const employee = await Employee.findOne({ _id: id, companyId }).select('_id employeeNumber').lean();
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
 
     const hashed = bcrypt.hashSync(String(password), 10);
     const result = await User.updateOne(
@@ -419,6 +548,9 @@ async function terminateEmployee(req, res) {
   try {
     const employee = await Employee.findOne({ _id: id, companyId });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
     if (!employee.active) {
       return res.status(400).json({ error: 'Employee is already inactive' });
     }
@@ -440,6 +572,11 @@ async function deactivateEmployee(req, res) {
   const { id } = req.params;
 
   try {
+    const employee = await Employee.findOne({ _id: id, companyId }).select('_id employeeNumber').lean();
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
     const result = await Employee.updateOne({ _id: id, companyId }, { $set: { active: false } });
     if (!result.matchedCount) return res.status(404).json({ error: 'Employee not found' });
     return res.json({ success: true });
@@ -467,6 +604,9 @@ async function grantManager(req, res) {
       return res.status(404).json({
         error: 'Employee not found. Make sure you selected an employee from the list and that they belong to your company.',
       });
+    }
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
     }
 
     const user = await User.findOne({ companyId, employeeId: employeeId, role: { $in: ['employee', 'manager'] } });
@@ -510,6 +650,9 @@ async function revokeManager(req, res) {
         error: 'Employee not found. Make sure you selected an employee from the list.',
       });
     }
+    if (isSystemClockEmployee(employee)) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
 
     const result = await User.updateOne(
       { companyId, employeeId: employeeId, role: 'manager' },
@@ -532,6 +675,7 @@ module.exports = {
   getNextEmployeeNumber,
   getEmployee,
   createEmployee,
+  sendEmployeeLoginText,
   updateEmployee,
   setEmployeePassword,
   terminateEmployee,

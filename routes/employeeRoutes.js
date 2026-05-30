@@ -10,6 +10,13 @@ router.get('/employees', requireAuth, requireCompany, employeeController.listEmp
 router.get('/employees/next-number', requireAuth, requireCompany, requireManager, employeeController.getNextEmployeeNumber);
 router.get('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.getEmployee);
 router.post('/employees', requireAuth, requireCompany, requireManager, employeeController.createEmployee);
+router.post(
+  '/employees/:id/send-login-text',
+  requireAuth,
+  requireCompany,
+  requireManager,
+  employeeController.sendEmployeeLoginText
+);
 router.put('/employees/:id', requireAuth, requireCompany, requireManager, employeeController.updateEmployee);
 router.put('/employees/:id/terminate', requireAuth, requireCompany, requireManager, employeeController.terminateEmployee);
 router.put('/employees/:id/password', requireAuth, requireCompany, requireManager, employeeController.setEmployeePassword);

@@ -3,7 +3,7 @@ const Employee = require('../models/Employee');
 const { sendPunchNotification } = require('../utils/sms');
 const { getCompanyTimezone, getUtcRangeForLocalDate } = require('../utils/timezone');
 
-const ADMIN_EMPLOYEE_NUMBER = 'ADMIN';
+const { SYSTEM_CLOCK_EMPLOYEE_NUMBER } = require('../utils/systemEmployee');
 
 function getLocalDateStringInTz(date, tz) {
   const dt = new Date(date);
@@ -69,12 +69,12 @@ async function ensureNoDuplicatePunchTypeForLocalDay({
 
 /** Get or create the company's "Admin" employee used for super-admin My Clock when not linked to a personal employee. */
 async function getOrCreateAdminEmployee(companyId) {
-  let emp = await Employee.findOne({ companyId, employeeNumber: ADMIN_EMPLOYEE_NUMBER }).lean();
+  let emp = await Employee.findOne({ companyId, employeeNumber: SYSTEM_CLOCK_EMPLOYEE_NUMBER }).lean();
   if (!emp) {
     const created = await Employee.create({
       companyId,
       name: 'Admin',
-      employeeNumber: ADMIN_EMPLOYEE_NUMBER,
+      employeeNumber: SYSTEM_CLOCK_EMPLOYEE_NUMBER,
       active: true,
     });
     emp = created.toObject ? created.toObject() : created;

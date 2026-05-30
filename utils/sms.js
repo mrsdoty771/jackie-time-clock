@@ -82,4 +82,68 @@ function sendPunchNotification(employeeName, punchType, punchTime) {
     });
 }
 
-module.exports = { sendPunchNotification, isConfigured };
+/**
+ * Normalize a US phone number to E.164 (+1XXXXXXXXXX) for Twilio.
+ * @param {string} phone
+ * @returns {string|null}
+ */
+function normalizePhoneToE164(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (String(phone || '').trim().startsWith('+') && digits.length >= 10) {
+    return `+${digits}`;
+  }
+  return null;
+}
+
+function isTwilioCoreConfigured() {
+  return !!(accountSid && authToken && fromNumber && String(fromNumber).trim());
+}
+
+/**
+ * Send SMS to an arbitrary phone number (e.g. employee login invite).
+ * @param {string} toPhone - Employee phone (formatted or digits)
+ * @param {string} body
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+async function sendSmsToPhone(toPhone, body) {
+  if (!isTwilioCoreConfigured()) {
+    const missing = [];
+    if (!accountSid || !String(accountSid).trim()) missing.push('TWILIO_ACCOUNT_SID');
+    if (!authToken || !String(authToken).trim()) missing.push('TWILIO_AUTH_TOKEN');
+    if (!fromNumber || !String(fromNumber).trim()) missing.push('TWILIO_PHONE_NUMBER');
+    return {
+      ok: false,
+      error: `SMS is not configured. Add ${missing.join(', ')} to .env and restart the server.`,
+    };
+  }
+  const to = normalizePhoneToE164(toPhone);
+  if (!to) {
+    return { ok: false, error: 'Invalid phone number. Enter a 10-digit US number.' };
+  }
+  const sid = String(accountSid).trim();
+  const token = String(authToken).trim();
+  const client = twilio(sid, token);
+  try {
+    await client.messages.create({
+      body: String(body || '').trim(),
+      from: String(fromNumber).trim(),
+      to,
+    });
+    console.log('SMS sent to', to);
+    return { ok: true };
+  } catch (err) {
+    const msg = err.message || err.code || String(err);
+    console.error('Twilio SMS error:', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+module.exports = {
+  sendPunchNotification,
+  sendSmsToPhone,
+  normalizePhoneToE164,
+  isConfigured,
+  isTwilioCoreConfigured,
+};
