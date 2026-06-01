@@ -405,6 +405,25 @@ function handleEmployeeProfileSubmit(e) {
         });
 }
 
+/** Open native date picker when clicking anywhere in the field (not only the calendar icon). */
+function bindDateInputFullClick(inputEl) {
+    if (!inputEl || inputEl.type !== 'date') return;
+    inputEl.addEventListener('click', () => {
+        if (typeof inputEl.showPicker !== 'function') return;
+        try {
+            inputEl.showPicker();
+        } catch (_) {
+            // showPicker must run from a user gesture; ignore if the browser blocks it.
+        }
+    });
+}
+
+function bindPunchDateInputsFullClick() {
+    ['manual-punch-date', 'edit-punches-date', 'edit-punch-date'].forEach((id) => {
+        bindDateInputFullClick(document.getElementById(id));
+    });
+}
+
 // Event Listeners
 function setupEventListeners() {
     // Login - prevent form submit, handle via fetch
@@ -615,7 +634,8 @@ function setupEventListeners() {
     const manualTimeEl = document.getElementById('manual-punch-time');
     if (manualDateEl && !manualDateEl.value) manualDateEl.value = now.toISOString().slice(0, 10);
     if (manualTimeEl && !manualTimeEl.value) manualTimeEl.value = now.toTimeString().slice(0, 5);
-    
+    bindPunchDateInputsFullClick();
+
     // Reports
     document.getElementById('generate-report-btn')?.addEventListener('click', generateReport);
     document.getElementById('print-report-btn')?.addEventListener('click', printReport);
