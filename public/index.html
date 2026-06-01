@@ -471,6 +471,46 @@
                         </div>
                         <input type="hidden" id="company-logo-data" name="logo_data">
                     </div>
+                    <hr style="margin: 28px 0; border: none; border-top: 1px solid #ddd;">
+                    <h4 style="margin-bottom: 8px;">SMS (Twilio)</h4>
+                    <p style="color: #666; font-size: 13px; margin-bottom: 16px;">
+                        Configure Twilio here for this company, or set <code>TWILIO_*</code> environment variables on the server.
+                        <strong>Company Settings values are used first;</strong> empty fields fall back to environment variables.
+                        Login invite links use <strong>Public app URL</strong> below first, then <code>BASE_URL</code> on the server.
+                    </p>
+                    <p id="company-twilio-status" style="font-size: 13px; margin-bottom: 12px; color: #666;"></p>
+                    <div class="form-group">
+                        <label for="company-twilio-account-sid">Twilio Account SID</label>
+                        <input type="text" id="company-twilio-account-sid" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="company-twilio-auth-token">Twilio Auth Token</label>
+                        <div class="password-input-wrap">
+                            <input type="password" id="company-twilio-auth-token" placeholder="Auth token" autocomplete="new-password">
+                            <button type="button" id="company-twilio-auth-token-toggle" class="password-toggle-btn" aria-label="Show auth token" title="Show auth token">
+                                <svg class="pwd-icon pwd-icon-show" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg class="pwd-icon pwd-icon-hide" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                        <small id="company-twilio-auth-token-hint" style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
+                            Leave blank when saving to keep the existing token.
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label for="company-twilio-phone-number">Twilio From number</label>
+                        <input type="text" id="company-twilio-phone-number" placeholder="+15551234567" autocomplete="off">
+                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">E.164 format (e.g. +15551234567). Used as the sender for login texts and punch alerts.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="company-twilio-notify-phone">Punch notification phone (optional)</label>
+                        <input type="text" id="company-twilio-notify-phone" placeholder="+15559876543" autocomplete="off">
+                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">Receives SMS when employees clock in/out or take lunch. Not used for employee login texts.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="company-public-base-url">Public app URL</label>
+                        <input type="url" id="company-public-base-url" placeholder="https://your-app.ondigitalocean.app" autocomplete="off">
+                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">HTTPS URL for login links in SMS (no trailing slash). Overrides server <code>BASE_URL</code> when set.</small>
+                    </div>
                     <button type="submit" class="btn btn-primary">Save Settings</button>
                 </form>
                 <div id="company-settings-message" style="margin-top: 15px;"></div>

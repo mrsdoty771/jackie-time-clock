@@ -151,7 +151,7 @@ async function createPunch(req, res) {
       createdBy: user.id,
     });
 
-    sendPunchNotification(emp.name, punch_type, punch.punchTime);
+    sendPunchNotification(emp.name, punch_type, punch.punchTime, companyId);
 
     return res.json({ success: true, id: String(punch._id) });
   } catch (err) {

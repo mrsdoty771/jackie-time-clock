@@ -43,7 +43,7 @@ Your server is now configured to accept connections from any network interface. 
 
 For a more reliable and secure solution, deploy to:
 - **Heroku** (Free tier available)
-- **DigitalOcean** ($5/month)
+- **DigitalOcean** ($5/month) — this project’s production app; see **[DEPLOY.md](DEPLOY.md)** for environment variables (MongoDB, Twilio SMS, `BASE_URL`, etc.)
 - **AWS** (Pay as you go)
 - **Railway** (Free tier available)
 

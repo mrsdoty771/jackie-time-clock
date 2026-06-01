@@ -1,5 +1,6 @@
 const CompanySettings = require('../models/CompanySettings');
 const Employee = require('../models/Employee');
+const { encrypt } = require('../utils/encrypt');
 const { isSystemClockEmployee } = require('../utils/systemEmployee');
 
 function normalizeCompanyId(raw) {
@@ -7,26 +8,72 @@ function normalizeCompanyId(raw) {
   return v.length ? v : null;
 }
 
+function isManagerSession(req) {
+  const role = req.session?.user?.role;
+  return role === 'manager' || role === 'super-admin';
+}
+
+function trimUrl(raw) {
+  return String(raw || '').trim().replace(/\/+$/, '');
+}
+
+function twilioFieldsForResponse(settings) {
+  if (!settings) {
+    return {
+      twilio_account_sid: '',
+      twilio_phone_number: '',
+      twilio_notify_phone: '',
+      twilio_auth_token_configured: false,
+      twilio_sms_configured: false,
+      public_base_url: '',
+    };
+  }
+  const sid = settings.twilioAccountSid ? String(settings.twilioAccountSid).trim() : '';
+  const from = settings.twilioPhoneNumber ? String(settings.twilioPhoneNumber).trim() : '';
+  const tokenConfigured = !!settings.twilioAuthTokenEncrypted;
+  const coreConfigured = !!(sid && tokenConfigured && from);
+  return {
+    twilio_account_sid: sid,
+    twilio_phone_number: from,
+    twilio_notify_phone: settings.twilioNotifyPhone ? String(settings.twilioNotifyPhone).trim() : '',
+    twilio_auth_token_configured: tokenConfigured,
+    twilio_sms_configured: coreConfigured,
+    public_base_url: settings.publicBaseUrl ? trimUrl(settings.publicBaseUrl) : '',
+  };
+}
+
+function baseSettingsResponse(settings) {
+  const startDay = Number.isInteger(settings?.payWeekStartDay) ? settings.payWeekStartDay : 1;
+  const endDay = Number.isInteger(settings?.payWeekEndDay) ? settings.payWeekEndDay : 0;
+  return {
+    company_name: settings?.companyName || 'MVC',
+    logo_data: settings?.logoData || null,
+    company_admin_employee_id: null,
+    timezone: settings?.timezone && String(settings.timezone).trim() ? String(settings.timezone).trim() : 'UTC',
+    pay_week_start_day: startDay,
+    pay_week_end_day: endDay,
+  };
+}
+
 // GET /api/company-settings
-// Public: pass ?companyId=...
-// Authed: derives companyId from session
+// Public: pass ?companyId=... (branding only)
+// Authed manager: Twilio / public URL fields for same company
 async function getCompanySettings(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
-  const companyId = req.session?.user?.companyId || normalizeCompanyId(req.query.companyId);
+  const sessionCompanyId = req.session?.user?.companyId;
+  const companyId = sessionCompanyId || normalizeCompanyId(req.query.companyId);
   if (!companyId) return res.status(400).json({ error: 'companyId is required' });
+
+  const includeTwilio =
+    isManagerSession(req) && sessionCompanyId && String(sessionCompanyId) === String(companyId);
 
   try {
     const settings = await CompanySettings.findOne({ companyId }).lean();
     if (!settings) {
-      return res.json({
-        company_name: 'MVC',
-        logo_data: null,
-        company_admin_employee_id: null,
-        timezone: 'UTC',
-        pay_week_start_day: 1,
-        pay_week_end_day: 0,
-      });
+      const empty = baseSettingsResponse(null);
+      if (includeTwilio) Object.assign(empty, twilioFieldsForResponse(null));
+      return res.json(empty);
     }
     const startDay = Number.isInteger(settings.payWeekStartDay) ? settings.payWeekStartDay : 1;
     const endDay = Number.isInteger(settings.payWeekEndDay) ? settings.payWeekEndDay : 0;
@@ -39,14 +86,18 @@ async function getCompanySettings(req, res) {
         companyAdminEmployeeId = null;
       }
     }
-    return res.json({
+    const payload = {
       company_name: settings.companyName || 'MVC',
       logo_data: settings.logoData || null,
       company_admin_employee_id: companyAdminEmployeeId,
       timezone: settings.timezone && String(settings.timezone).trim() ? String(settings.timezone).trim() : 'UTC',
       pay_week_start_day: startDay,
       pay_week_end_day: endDay,
-    });
+    };
+    if (includeTwilio) {
+      Object.assign(payload, twilioFieldsForResponse(settings));
+    }
+    return res.json(payload);
   } catch (err) {
     console.error('getCompanySettings error:', err);
     return res.status(500).json({ error: 'Database error' });
@@ -65,6 +116,11 @@ async function updateCompanySettings(req, res) {
     timezone,
     pay_week_start_day,
     pay_week_end_day,
+    twilio_account_sid,
+    twilio_auth_token,
+    twilio_phone_number,
+    twilio_notify_phone,
+    public_base_url,
   } = req.body;
   if (!company_name || String(company_name).trim().length === 0) {
     return res.status(400).json({ error: 'Company name is required' });
@@ -118,6 +174,26 @@ async function updateCompanySettings(req, res) {
       const tz = String(timezone || '').trim();
       update.timezone = tz.length > 0 ? tz : 'UTC';
     }
+    if (twilio_account_sid !== undefined) {
+      const sid = String(twilio_account_sid || '').trim();
+      update.twilioAccountSid = sid.length > 0 ? sid : null;
+    }
+    if (twilio_phone_number !== undefined) {
+      const from = String(twilio_phone_number || '').trim();
+      update.twilioPhoneNumber = from.length > 0 ? from : null;
+    }
+    if (twilio_notify_phone !== undefined) {
+      const notify = String(twilio_notify_phone || '').trim();
+      update.twilioNotifyPhone = notify.length > 0 ? notify : null;
+    }
+    if (twilio_auth_token !== undefined && String(twilio_auth_token).trim()) {
+      update.twilioAuthTokenEncrypted = encrypt(String(twilio_auth_token).trim());
+    }
+    if (public_base_url !== undefined) {
+      const url = trimUrl(public_base_url);
+      update.publicBaseUrl = url.length > 0 ? url : null;
+    }
+
     const updated = await CompanySettings.findOneAndUpdate(
       { companyId },
       { $set: update },
@@ -134,6 +210,7 @@ async function updateCompanySettings(req, res) {
       timezone: updated.timezone && String(updated.timezone).trim() ? String(updated.timezone).trim() : 'UTC',
       pay_week_start_day: uStart,
       pay_week_end_day: uEnd,
+      ...twilioFieldsForResponse(updated),
     });
   } catch (err) {
     console.error('updateCompanySettings error:', err);
@@ -142,4 +219,3 @@ async function updateCompanySettings(req, res) {
 }
 
 module.exports = { getCompanySettings, updateCompanySettings };
-

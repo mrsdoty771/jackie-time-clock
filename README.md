@@ -99,6 +99,19 @@ To use **Email Report** (send the weekly report as a PDF attachment):
 
 Without `SMTP_USER` and `SMTP_PASS`, the app will show: *Email is not configured…* when you try to send a report.
 
+### SMS (Twilio)
+
+Optional Twilio integration sends:
+
+- **Punch notifications** when someone clocks in/out or lunch in/out (notify phone in Company Settings or `TWILIO_NOTIFY_PHONE`)
+- **Login invite texts** to the employee’s phone (manager: “Send login text”)
+
+Configure in the manager dashboard → **Company Settings** → **SMS (Twilio)** (per company, encrypted auth token), or set `TWILIO_*` in `.env` / hosting env as fallback for empty fields. **Public app URL** in Company Settings (or `BASE_URL` env) is required in production for login links in SMS. See **[DEPLOY.md](DEPLOY.md)**.
+
+## Production deployment
+
+See **[DEPLOY.md](DEPLOY.md)** for DigitalOcean environment variables (database, session, optional Twilio/`BASE_URL` fallbacks, SMTP).
+
 ## Database
 
 The application uses MongoDB. Key collections include:
@@ -120,6 +133,7 @@ The application uses MongoDB. Key collections include:
 - **Database Errors**: Verify `DATABASE_URL` is a complete MongoDB connection string
 - **Login Issues**: Verify your user exists for the correct `companyId`
 - **Email is not configured**: Add `SMTP_USER` and `SMTP_PASS` to `.env` (see "Email Report (PDF)" above), then restart the server
+- **SMS not working on production**: Configure **Company Settings → SMS (Twilio)** and **Public app URL**, or set `TWILIO_*` and `BASE_URL` on the host; see [DEPLOY.md](DEPLOY.md)
 
 ## File Structure
 

@@ -1,12 +1,23 @@
 const crypto = require('crypto');
 const LoginInvite = require('../models/LoginInvite');
+const CompanySettings = require('../models/CompanySettings');
 
 const INVITE_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 
-function getPublicBaseUrl() {
-  const raw = process.env.BASE_URL || process.env.APP_URL || '';
-  const trimmed = String(raw).trim().replace(/\/+$/, '');
-  if (trimmed) return trimmed;
+const PUBLIC_URL_ENV_KEYS = ['BASE_URL', 'APP_URL', 'PUBLIC_URL', 'WEB_URL', 'SITE_URL'];
+
+const BASE_URL_ENV_HINT =
+  'Set Public app URL in Company Settings or BASE_URL in your hosting environment (e.g. https://your-app.ondigitalocean.app), then redeploy. Local dev: optional in .env when NODE_ENV is not production.';
+
+function trimUrl(raw) {
+  return String(raw || '').trim().replace(/\/+$/, '');
+}
+
+function getPublicBaseUrlFromEnv() {
+  for (const key of PUBLIC_URL_ENV_KEYS) {
+    const trimmed = trimUrl(process.env[key]);
+    if (trimmed) return trimmed;
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     const port = process.env.PORT || 3000;
@@ -14,6 +25,41 @@ function getPublicBaseUrl() {
   }
 
   return '';
+}
+
+/**
+ * Public base URL for login invite links. Company Settings publicBaseUrl first, then env.
+ * @param {string} [companyId]
+ * @returns {Promise<string>}
+ */
+async function getPublicBaseUrl(companyId) {
+  const cid = String(companyId || '').trim();
+  if (cid) {
+    const settings = await CompanySettings.findOne({ companyId: cid }).select('publicBaseUrl').lean();
+    const fromCompany = trimUrl(settings?.publicBaseUrl);
+    if (fromCompany) return fromCompany;
+  }
+  return getPublicBaseUrlFromEnv();
+}
+
+/**
+ * Log public base URL status at server startup (env only).
+ */
+function logPublicBaseUrlOnStartup() {
+  const base = getPublicBaseUrlFromEnv();
+  if (base) {
+    console.log('[BASE_URL] Login invite links will use (env):', base);
+    console.log('[BASE_URL] Per-company Public app URL can override in Company Settings.');
+    return;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    console.warn(
+      '[BASE_URL] Not set in env — login invite SMS needs Company Settings Public app URL or BASE_URL.',
+      BASE_URL_ENV_HINT
+    );
+    return;
+  }
+  console.log('[BASE_URL] Using local default for login invites:', getPublicBaseUrlFromEnv());
 }
 
 /**
@@ -29,7 +75,7 @@ async function createLoginInvite(companyId, userId) {
     userId,
     expiresAt,
   });
-  const base = getPublicBaseUrl();
+  const base = await getPublicBaseUrl(companyId);
   const loginUrl = base ? `${base}/?invite=${encodeURIComponent(token)}` : `/?invite=${encodeURIComponent(token)}`;
   return { token, loginUrl, expiresAt };
 }
@@ -56,4 +102,12 @@ async function redeemLoginInvite(tokenRaw) {
   return { companyId: invite.companyId, userId: invite.userId };
 }
 
-module.exports = { createLoginInvite, redeemLoginInvite, getPublicBaseUrl, INVITE_TTL_MS };
+module.exports = {
+  createLoginInvite,
+  redeemLoginInvite,
+  getPublicBaseUrl,
+  getPublicBaseUrlFromEnv,
+  logPublicBaseUrlOnStartup,
+  INVITE_TTL_MS,
+  BASE_URL_ENV_HINT,
+};

@@ -5,7 +5,7 @@ const Employee = require('../models/Employee');
 const User = require('../models/User');
 const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
-const { createLoginInvite, getPublicBaseUrl } = require('../utils/loginInvite');
+const { createLoginInvite, getPublicBaseUrl, BASE_URL_ENV_HINT } = require('../utils/loginInvite');
 const { sendSmsToPhone } = require('../utils/sms');
 const {
   isSystemClockEmployee,
@@ -27,10 +27,11 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user) {
   if (!phone) {
     return { ok: false, error: 'Employee has no phone number on file.' };
   }
-  if (!getPublicBaseUrl()) {
+  const publicBaseUrl = await getPublicBaseUrl(companyId);
+  if (!publicBaseUrl) {
     return {
       ok: false,
-      error: 'BASE_URL is not set in .env. Add your public app URL (e.g. https://clock.example.com) so login links work.',
+      error: `Public app URL is not configured for login links. ${BASE_URL_ENV_HINT}`,
     };
   }
   let tempPassword = '';
@@ -49,7 +50,7 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user) {
   const { loginUrl } = await createLoginInvite(companyId, user._id);
   const companyLabel = await getCompanyDisplayName(companyId);
   const body = `${companyLabel} login — tap to sign in: ${loginUrl}`;
-  const sms = await sendSmsToPhone(phone, body);
+  const sms = await sendSmsToPhone(phone, body, companyId);
   if (!sms.ok) return sms;
   return { ok: true, message: 'Login text sent.', loginUrl };
 }

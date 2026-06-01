@@ -1,6 +1,13 @@
 // 1. Load environment variables first (from project root, same folder as server.js)
+// Production (e.g. DigitalOcean) uses platform env vars; .env is local-only and not deployed.
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+const fs = require('fs');
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+} else if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: envPath });
+}
 
 // 2. Import core libraries
 const express = require('express');
@@ -72,8 +79,13 @@ app.get('*', (req, res, next) => {
 });
 
 // 8. Start Server & Database
+const { logTwilioConfigOnStartup } = require('./utils/sms');
+const { logPublicBaseUrlOnStartup } = require('./utils/loginInvite');
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Time Clock server running on port ${PORT}`);
+  console.log(`Time Clock server running on port ${PORT} (NODE_ENV=${process.env.NODE_ENV || 'development'})`);
+  logTwilioConfigOnStartup();
+  logPublicBaseUrlOnStartup();
   
   // Connect to MongoDB after the server is already "awake"
   const url = process.env.DATABASE_URL;

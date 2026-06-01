@@ -1,24 +1,27 @@
 /**
- * Send SMS via Twilio. Used for punch notifications (clock in/out, lunch in/out).
- * Requires in .env: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, TWILIO_NOTIFY_PHONE
+ * Send SMS via Twilio. Used for punch notifications (clock in/out, lunch in/out)
+ * and employee login invite texts.
+ *
+ * Config precedence (per field): Company Settings → process.env (TWILIO_*).
  */
 
 const twilio = require('twilio');
+const {
+  ENV_HINT,
+  getEnvTwilioConfig,
+  getTwilioConfig,
+  missingTwilioCoreVars,
+  missingPunchNotifyVars,
+  formatConfigError,
+} = require('./twilioConfig');
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim?.() || process.env.TWILIO_ACCOUNT_SID || '';
-const authToken = process.env.TWILIO_AUTH_TOKEN?.trim?.() || process.env.TWILIO_AUTH_TOKEN || '';
-const fromNumber = process.env.TWILIO_PHONE_NUMBER?.trim?.() || process.env.TWILIO_PHONE_NUMBER || '';
-const toNumber = process.env.TWILIO_NOTIFY_PHONE?.trim?.() || process.env.TWILIO_NOTIFY_PHONE || '';
+function isConfiguredSync() {
+  const cfg = getEnvTwilioConfig();
+  return missingPunchNotifyVars(cfg).length === 0;
+}
 
-function isConfigured() {
-  return (
-    accountSid &&
-    authToken &&
-    fromNumber &&
-    toNumber &&
-    String(fromNumber).trim() !== '' &&
-    String(toNumber).trim() !== ''
-  );
+function isTwilioCoreConfiguredSync() {
+  return missingTwilioCoreVars(getEnvTwilioConfig()).length === 0;
 }
 
 const PUNCH_LABELS = {
@@ -39,20 +42,49 @@ function formatTime(date) {
 }
 
 /**
+ * Log Twilio configuration status once at server startup (env only; per-company in Company Settings).
+ */
+function logTwilioConfigOnStartup() {
+  const cfg = getEnvTwilioConfig();
+  const coreMissing = missingTwilioCoreVars(cfg);
+  const punchMissing = missingPunchNotifyVars(cfg);
+
+  if (coreMissing.length === 0) {
+    console.log(
+      '[Twilio] Core SMS configured via environment (from',
+      cfg.fromNumber,
+      '). Login texts enabled.'
+    );
+    if (punchMissing.length === 0) {
+      console.log('[Twilio] Punch notifications enabled (notify', cfg.toNumber, ').');
+    } else {
+      console.warn(
+        '[Twilio] Punch notifications disabled (env) — missing:',
+        punchMissing.join(', '),
+        '.',
+        ENV_HINT
+      );
+    }
+    console.log('[Twilio] Per-company Twilio can also be set in Company Settings (manager dashboard).');
+    return;
+  }
+
+  console.warn(
+    '[Twilio] No env TWILIO_* core config — SMS may still work per company via Company Settings.',
+    ENV_HINT
+  );
+}
+
+/**
  * Send an SMS when someone punches (clock in, clock out, lunch in, lunch out).
  * Fire-and-forget: does not throw; logs errors.
- * @param {string} employeeName - Display name of the employee
- * @param {string} punchType - One of: clock_in, clock_out, lunch_in, lunch_out
- * @param {Date|string} punchTime - Time of the punch
+ * @param {string} companyId
  */
-function sendPunchNotification(employeeName, punchType, punchTime) {
-  if (!isConfigured()) {
-    const missing = [];
-    if (!accountSid || !String(accountSid).trim()) missing.push('TWILIO_ACCOUNT_SID');
-    if (!authToken || !String(authToken).trim()) missing.push('TWILIO_AUTH_TOKEN');
-    if (!fromNumber || !String(fromNumber).trim()) missing.push('TWILIO_PHONE_NUMBER');
-    if (!toNumber || !String(toNumber).trim()) missing.push('TWILIO_NOTIFY_PHONE');
-    console.warn('Twilio SMS skipped: add to .env and restart server:', missing.join(', ') || 'check variable names');
+async function sendPunchNotification(employeeName, punchType, punchTime, companyId) {
+  const cfg = await getTwilioConfig(companyId);
+  const missing = missingPunchNotifyVars(cfg);
+  if (missing.length > 0) {
+    console.warn('Twilio SMS skipped:', missing.join(', '), '—', ENV_HINT);
     return;
   }
   const rawType = String(punchType || '').trim();
@@ -61,31 +93,29 @@ function sendPunchNotification(employeeName, punchType, punchTime) {
   const name = String(employeeName || 'Employee').trim() || 'Employee';
   const body = `${name} ${label} at ${timeStr}.`;
 
-  const sid = String(accountSid).trim();
-  const token = String(authToken).trim();
-  const client = twilio(sid, token);
+  const client = twilio(cfg.accountSid, cfg.authToken);
   client.messages
     .create({
       body,
-      from: String(fromNumber).trim(),
-      to: String(toNumber).trim(),
+      from: cfg.fromNumber,
+      to: cfg.toNumber,
     })
     .then(() => {
-      console.log('SMS sent to', String(toNumber).trim(), ':', body);
+      console.log('SMS sent to', cfg.toNumber, ':', body);
     })
     .catch((err) => {
       const msg = err.message || err.code || String(err);
       console.error('Twilio SMS error:', msg);
       if (msg.toLowerCase().includes('authenticate') || err.code === 20003) {
-        console.error('Twilio auth failed: check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in .env (no spaces). Get current values from https://console.twilio.com');
+        console.error(
+          'Twilio auth failed: verify Account SID and Auth Token in Company Settings or TWILIO_* env vars. https://console.twilio.com'
+        );
       }
     });
 }
 
 /**
  * Normalize a US phone number to E.164 (+1XXXXXXXXXX) for Twilio.
- * @param {string} phone
- * @returns {string|null}
  */
 function normalizePhoneToE164(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -97,38 +127,26 @@ function normalizePhoneToE164(phone) {
   return null;
 }
 
-function isTwilioCoreConfigured() {
-  return !!(accountSid && authToken && fromNumber && String(fromNumber).trim());
-}
-
 /**
  * Send SMS to an arbitrary phone number (e.g. employee login invite).
- * @param {string} toPhone - Employee phone (formatted or digits)
- * @param {string} body
+ * @param {string} companyId
  * @returns {Promise<{ ok: boolean, error?: string }>}
  */
-async function sendSmsToPhone(toPhone, body) {
-  if (!isTwilioCoreConfigured()) {
-    const missing = [];
-    if (!accountSid || !String(accountSid).trim()) missing.push('TWILIO_ACCOUNT_SID');
-    if (!authToken || !String(authToken).trim()) missing.push('TWILIO_AUTH_TOKEN');
-    if (!fromNumber || !String(fromNumber).trim()) missing.push('TWILIO_PHONE_NUMBER');
-    return {
-      ok: false,
-      error: `SMS is not configured. Add ${missing.join(', ')} to .env and restart the server.`,
-    };
+async function sendSmsToPhone(toPhone, body, companyId) {
+  const cfg = await getTwilioConfig(companyId);
+  const missing = missingTwilioCoreVars(cfg);
+  if (missing.length > 0) {
+    return { ok: false, error: formatConfigError(missing) };
   }
   const to = normalizePhoneToE164(toPhone);
   if (!to) {
     return { ok: false, error: 'Invalid phone number. Enter a 10-digit US number.' };
   }
-  const sid = String(accountSid).trim();
-  const token = String(authToken).trim();
-  const client = twilio(sid, token);
+  const client = twilio(cfg.accountSid, cfg.authToken);
   try {
     await client.messages.create({
       body: String(body || '').trim(),
-      from: String(fromNumber).trim(),
+      from: cfg.fromNumber,
       to,
     });
     console.log('SMS sent to', to);
@@ -144,6 +162,9 @@ module.exports = {
   sendPunchNotification,
   sendSmsToPhone,
   normalizePhoneToE164,
-  isConfigured,
-  isTwilioCoreConfigured,
+  isConfigured: isConfiguredSync,
+  isTwilioCoreConfigured: isTwilioCoreConfiguredSync,
+  logTwilioConfigOnStartup,
+  getTwilioConfig,
+  formatConfigError,
 };

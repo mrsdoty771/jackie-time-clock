@@ -735,6 +735,21 @@ function setupEventListeners() {
         if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
     });
 
+    document.getElementById('company-twilio-auth-token-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('company-twilio-auth-token');
+        const btn = document.getElementById('company-twilio-auth-token-toggle');
+        const showIcon = btn?.querySelector('.pwd-icon-show');
+        const hideIcon = btn?.querySelector('.pwd-icon-hide');
+        if (!input || !btn) return;
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        btn.setAttribute('aria-label', isPassword ? 'Hide auth token' : 'Show auth token');
+        btn.setAttribute('title', isPassword ? 'Hide auth token' : 'Show auth token');
+        if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
+        if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
+    });
+
     // Edit Employee: eye toggle (delegation so click on icon inside button works)
     document.getElementById('edit-employee-modal')?.addEventListener('click', (e) => {
         const btn = e.target.closest('#edit-emp-password-toggle');
@@ -3014,10 +3029,45 @@ function loadCompanySettings() {
             }
             loadCompanyAdminEmployeeDropdown(data.company_admin_employee_id || null);
             applyCompanyPayWeekFromSettings(data);
+            applyCompanyTwilioFromSettings(data);
         })
         .catch(err => {
             console.error('Error loading company settings:', err);
         });
+}
+
+function applyCompanyTwilioFromSettings(data) {
+    const sidEl = document.getElementById('company-twilio-account-sid');
+    const tokenEl = document.getElementById('company-twilio-auth-token');
+    const fromEl = document.getElementById('company-twilio-phone-number');
+    const notifyEl = document.getElementById('company-twilio-notify-phone');
+    const baseUrlEl = document.getElementById('company-public-base-url');
+    const statusEl = document.getElementById('company-twilio-status');
+    const hintEl = document.getElementById('company-twilio-auth-token-hint');
+    if (!sidEl && !statusEl) return;
+    if (data.twilio_account_sid !== undefined && sidEl) sidEl.value = data.twilio_account_sid || '';
+    if (data.twilio_phone_number !== undefined && fromEl) fromEl.value = data.twilio_phone_number || '';
+    if (data.twilio_notify_phone !== undefined && notifyEl) notifyEl.value = data.twilio_notify_phone || '';
+    if (data.public_base_url !== undefined && baseUrlEl) baseUrlEl.value = data.public_base_url || '';
+    if (tokenEl) tokenEl.value = '';
+    const tokenConfigured = !!data.twilio_auth_token_configured;
+    if (hintEl) {
+        hintEl.textContent = tokenConfigured
+            ? 'Auth token is saved. Enter a new value only to change it; leave blank to keep the existing token.'
+            : 'Leave blank when saving to keep the existing token.';
+    }
+    if (statusEl) {
+        if (data.twilio_sms_configured) {
+            statusEl.textContent = 'SMS: configured for this company (Account SID, auth token, and From number).';
+            statusEl.style.color = '#2e7d32';
+        } else if (data.twilio_account_sid || data.twilio_phone_number || tokenConfigured) {
+            statusEl.textContent = 'SMS: partially configured — complete Account SID, auth token, and From number, or rely on server TWILIO_* env vars for missing fields.';
+            statusEl.style.color = '#b45309';
+        } else {
+            statusEl.textContent = 'SMS: not configured in Company Settings. Server TWILIO_* environment variables will be used if set.';
+            statusEl.style.color = '#666';
+        }
+    }
 }
 
 function loadCompanyAdminEmployeeDropdown(selectedEmployeeId) {
@@ -3230,6 +3280,11 @@ function handleCompanySettings(e) {
     const timezone = document.getElementById('company-timezone')?.value?.trim() || 'UTC';
     const payWeekStart = parseInt(document.getElementById('pay-week-start')?.value, 10);
     const payWeekEnd = parseInt(document.getElementById('pay-week-end')?.value, 10);
+    const twilioAccountSid = document.getElementById('company-twilio-account-sid')?.value?.trim() || '';
+    const twilioAuthToken = document.getElementById('company-twilio-auth-token')?.value?.trim() || '';
+    const twilioPhoneNumber = document.getElementById('company-twilio-phone-number')?.value?.trim() || '';
+    const twilioNotifyPhone = document.getElementById('company-twilio-notify-phone')?.value?.trim() || '';
+    const publicBaseUrl = document.getElementById('company-public-base-url')?.value?.trim() || '';
     const messageDiv = document.getElementById('company-settings-message');
     if (!companyName) {
         if (messageDiv) messageDiv.innerHTML = '<p style="color: red;">Company name is required</p>';
@@ -3245,6 +3300,11 @@ function handleCompanySettings(e) {
             timezone,
             pay_week_start_day: Number.isNaN(payWeekStart) ? 1 : payWeekStart,
             pay_week_end_day: Number.isNaN(payWeekEnd) ? 0 : payWeekEnd,
+            twilio_account_sid: twilioAccountSid,
+            twilio_phone_number: twilioPhoneNumber,
+            twilio_notify_phone: twilioNotifyPhone,
+            public_base_url: publicBaseUrl,
+            ...(twilioAuthToken ? { twilio_auth_token: twilioAuthToken } : {}),
         }),
         credentials: 'include'
     })
@@ -3257,6 +3317,9 @@ function handleCompanySettings(e) {
                     companyPayWeekEndDay = data.pay_week_end_day;
                     initializeWeekStart();
                 }
+                applyCompanyTwilioFromSettings(data);
+                const tokenEl = document.getElementById('company-twilio-auth-token');
+                if (tokenEl) tokenEl.value = '';
                 if (messageDiv) messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page and dashboard will update.</p>';
                 updateLoginPageTitle(data.company_name);
                 loadManagerNavCompanyName();

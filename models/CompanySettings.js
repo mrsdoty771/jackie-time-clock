@@ -11,6 +11,13 @@ const CompanySettingsSchema = new mongoose.Schema(
     payWeekStartDay: { type: Number, default: 1 },
     /** Last day of the pay week (six days after start; default Sunday for Mon–Sun week). */
     payWeekEndDay: { type: Number, default: 0 },
+    /** Twilio SMS — per-company; env vars used as fallback when a field is empty. */
+    twilioAccountSid: { type: String, default: null, trim: true },
+    twilioAuthTokenEncrypted: { type: String, default: null },
+    twilioPhoneNumber: { type: String, default: null, trim: true },
+    twilioNotifyPhone: { type: String, default: null, trim: true },
+    /** Public HTTPS URL for login invite links in SMS (overrides BASE_URL env when set). */
+    publicBaseUrl: { type: String, default: null, trim: true },
   },
   { timestamps: true }
 );
