@@ -4,20 +4,16 @@ const User = require('../models/User');
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const { decrypt } = require('../utils/encrypt');
-const { getCompanyTimezone, getUtcRangeForLocalDate, getLocalDateStringInTz, formatDateTimeInTz } = require('../utils/timezone');
+const {
+  getCompanyTimezone,
+  getUtcRangeForLocalDate,
+  getLocalDateStringInTz,
+  formatDateTimeInTz,
+  formatLocalDateInTz,
+} = require('../utils/timezone');
 
 function formatPunchType(type) {
   return String(type || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
-/** Format a date string (YYYY-MM-DD) for display. */
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  return new Date(String(dateStr).trim().slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 /** Shared: build report data array for weekly and email. startDateStr/endDateStr are YYYY-MM-DD in company TZ. */
@@ -47,6 +43,7 @@ async function getReportData(companyId, user, startDateStr, endDateStr, employee
     const empName = emp?.name || p.employeeName || 'Employee';
     const empNum = emp?.employeeNumber || null;
     const dayKey = getLocalDateStringInTz(p.punchTime, tz);
+    if (dayKey < startDateStr || dayKey > endDateStr) return;
     if (!employeeMap[empId]) {
       employeeMap[empId] = {
         employee_id: empId,
@@ -125,7 +122,7 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, tim
       doc.moveDown(0.5);
       const dayList = Object.values(emp.days).sort((a, b) => a.date.localeCompare(b.date));
       dayList.forEach((day) => {
-        doc.fontSize(10).text(`${formatDate(day.date)} - ${day.hours} hours`);
+        doc.fontSize(10).text(`${formatLocalDateInTz(day.date, tz)} - ${day.hours} hours`);
         day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
         day.punches.forEach((p) => {
           doc.fontSize(9).text(`  ${formatPunchType(p.type)}: ${formatDateTimeInTz(p.time, tz)}${p.notes ? ` (${p.notes})` : ''}`, { indent: 15 });
@@ -228,8 +225,8 @@ async function emailReport(req, res) {
 
   try {
     const reportData = await getReportData(companyId, user, startDateStr, endDateStr, employeeId, tz);
-    const startStr = formatDate(startDateStr);
-    const endStr = formatDate(endDateStr);
+    const startStr = formatLocalDateInTz(startDateStr, tz);
+    const endStr = formatLocalDateInTz(endDateStr, tz);
     const employeeLabel = employeeId ? (reportData[0]?.employee_name || 'Employee') : 'All Employees';
     const pdfBuffer = await buildReportPdf(reportData, startStr, endStr, employeeLabel, tz);
 

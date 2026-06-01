@@ -236,6 +236,7 @@ function showPage(role) {
     loadCompanyTimezone();
     if (role === 'manager' || role === 'super-admin') {
         document.getElementById('manager-page').classList.remove('hidden');
+        switchTab('punches');
         loadManagerNavCompanyName();
         loadEmployees();
         loadEmployeesForPunch();
@@ -2648,7 +2649,9 @@ function displayReport(reportData) {
     if (emailBtn) emailBtn.style.display = 'inline-block';
     
     container.innerHTML = reportData.map(emp => {
-        const daysHtml = Object.values(emp.days).map(day => {
+        const daysHtml = Object.values(emp.days)
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .map(day => {
             const punchesHtml = day.punches.map(p => {
                 const date = new Date(p.time);
                 return `<div>${formatPunchType(p.type)}: ${formatDateTime(date)}${p.notes ? ` (${p.notes})` : ''}</div>`;
@@ -2900,12 +2903,15 @@ function handleEmailReportSubmit(e) {
 }
 
 function formatDateForPrint(dateStr) {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
+    const s = String(dateStr || '').trim().slice(0, 10);
+    if (!s) return '';
+    const zone = companyTimezone || 'UTC';
+    const ref = instantOnLocalDate(s, zone);
+    return ref.toLocaleDateString('en-US', {
+        timeZone: zone,
         month: 'short',
         day: 'numeric',
-        year: 'numeric'
+        year: 'numeric',
     });
 }
 
@@ -3382,12 +3388,29 @@ function formatDateTime(date) {
     return formatDateTimeInTz(date, companyTimezone);
 }
 
+/** Find a UTC instant that falls on localDateStr in the given IANA timezone. */
+function instantOnLocalDate(localDateStr, timezone) {
+    const s = String(localDateStr || '').trim().slice(0, 10);
+    const zone = (timezone && String(timezone).trim()) || companyTimezone || 'UTC';
+    const base = new Date(s + 'T12:00:00.000Z').getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (let offset = -dayMs; offset <= dayMs; offset += 60 * 60 * 1000) {
+        const d = new Date(base + offset);
+        if (getLocalDateStringInTz(d, zone) === s) return d;
+    }
+    return new Date(s + 'T12:00:00.000Z');
+}
+
 function formatDate(dateStr) {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
+    const s = String(dateStr || '').trim().slice(0, 10);
+    if (!s) return '';
+    const zone = companyTimezone || 'UTC';
+    const ref = instantOnLocalDate(s, zone);
+    return ref.toLocaleDateString('en-US', {
+        timeZone: zone,
         weekday: 'long',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
     });
 }
 

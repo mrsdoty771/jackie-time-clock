@@ -116,11 +116,35 @@ function formatDateTimeInTz(utcDate, timezone) {
   });
 }
 
+/**
+ * Format a calendar date (YYYY-MM-DD) for display in a timezone.
+ * Do not pass date-only strings to `new Date(str)` — that parses as UTC and shifts the day in US zones.
+ * @param {string} localDateStr YYYY-MM-DD
+ * @param {string} timezone IANA timezone
+ * @param {Intl.DateTimeFormatOptions} [options]
+ * @returns {string}
+ */
+function formatLocalDateInTz(localDateStr, timezone, options = {}) {
+  const s = String(localDateStr || '').trim().slice(0, 10);
+  if (!s || s.length < 10) return '';
+  const tz = timezone && String(timezone).trim() ? timezone : DEFAULT_TZ;
+  const { startUtc } = getUtcRangeForLocalDate(s, tz);
+  const ref = new Date(startUtc.getTime() + 60 * 60 * 1000);
+  return ref.toLocaleDateString('en-US', {
+    timeZone: tz,
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    ...options,
+  });
+}
+
 module.exports = {
   getCompanyTimezone,
   getLocalDateStringInTz,
   getUtcRangeForLocalDate,
   getTodayInTz,
   formatDateTimeInTz,
+  formatLocalDateInTz,
   DEFAULT_TZ,
 };
