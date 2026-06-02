@@ -57,7 +57,7 @@ function init() {
     initializeWeekStart();
 }
 
-/** SMS login link: /?invite=token — redeem once, auto-login, then force password change if required. */
+/** SMS login link: /?invite=token — fetch credentials once to pre-fill login; user must sign in manually. */
 async function redeemLoginInviteFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('invite');
@@ -69,8 +69,8 @@ async function redeemLoginInviteFromUrl() {
     try {
         const res = await fetch(`${API_BASE}/login-invite/${encodeURIComponent(token)}`);
         const data = await res.json().catch(() => ({}));
+        showLoginPage();
         if (!res.ok || data.error) {
-            showLoginPage();
             if (errorDiv) {
                 errorDiv.textContent = data.error || 'This login link is invalid or has expired.';
                 errorDiv.style.color = 'red';
@@ -78,39 +78,11 @@ async function redeemLoginInviteFromUrl() {
             return true;
         }
 
-        const companyId = data.companyId || getLoginCompanyId();
-        const loginRes = await fetch(`${API_BASE}/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                username: data.username,
-                password: data.password,
-                companyId,
-            }),
-            credentials: 'include',
-        });
-        const loginData = await loginRes.json().catch(() => ({}));
-        if (loginRes.ok && loginData.success) {
-            currentUser = loginData.user;
-            if (loginData.must_change_password || currentUser.must_change_password) {
-                showForcedPasswordChangeUI();
-            } else {
-                showPage(loginData.user.role);
-                loadInitialData();
-            }
-            if (errorDiv) errorDiv.textContent = '';
-            return true;
-        }
-
-        showLoginPage();
         const idEl = document.getElementById('login-identifier');
         const pwdEl = document.getElementById('password');
         if (idEl) idEl.value = data.username || '';
         if (pwdEl) pwdEl.value = data.password || '';
-        if (errorDiv) {
-            errorDiv.textContent = loginData.error || 'Could not sign in from link. Use the credentials in your text message.';
-            errorDiv.style.color = 'red';
-        }
+        if (errorDiv) errorDiv.textContent = '';
         return true;
     } catch (err) {
         console.error('Login invite error:', err);
