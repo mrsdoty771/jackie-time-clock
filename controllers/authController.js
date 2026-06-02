@@ -54,6 +54,30 @@ async function resolveUserByIdentifier(companyId, identifierRaw) {
     return { user, employeeName };
   }
 
+  if (/^\d+$/.test(identifier)) {
+    const employees = await Employee.find({
+      companyId,
+      active: true,
+      employeeNumber: /^\d+$/,
+    })
+      .select('_id name employeeNumber')
+      .lean();
+    const idNum = parseInt(identifier, 10);
+    const empByNumber = employees.find((e) => {
+      if (e.employeeNumber === identifier) return true;
+      const en = parseInt(e.employeeNumber, 10);
+      return !Number.isNaN(idNum) && !Number.isNaN(en) && idNum === en;
+    });
+    if (empByNumber) {
+      user = await User.findOne({
+        companyId,
+        employeeId: empByNumber._id,
+        role: { $in: ['employee', 'manager', 'super-admin'] },
+      }).lean();
+      if (user) return { user, employeeName: empByNumber.name };
+    }
+  }
+
   if (looksLikeEmail(identifier)) {
     const emailLower = identifier.toLowerCase();
     user = await User.findOne({ companyId, email: emailLower }).lean();
@@ -96,7 +120,7 @@ async function login(req, res) {
   const loginName = String(
     body.username != null && body.username !== '' ? body.username : body.identifier != null ? body.identifier : ''
   ).trim();
-  const { password } = body;
+  const password = body.password != null ? String(body.password).trim() : '';
   const companyId = normalizeCompanyId(body.companyId);
 
   if (!companyId) {
@@ -206,9 +230,10 @@ async function getProfile(req, res) {
       .select('username name email ext role employeeId displayName smtpHost smtpPort smtpSecure smtpUser smtpPassEncrypted defaultEmailBody')
       .lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
+    const companyId = req.companyId || req.session.user.companyId;
     let phone = '';
     if (user.employeeId) {
-      const emp = await Employee.findOne({ _id: user.employeeId, companyId: req.session.user.companyId })
+      const emp = await Employee.findOne({ _id: user.employeeId, companyId })
         .select('phone')
         .lean();
       phone = emp?.phone || '';
@@ -278,12 +303,19 @@ async function updateProfile(req, res) {
       }
       user.password = bcrypt.hashSync(pwd, 10);
       user.mustChangePassword = false;
+      user.passwordDisplayEncrypted = undefined;
     }
-    if (phone !== undefined && user.employeeId) {
-      const emp = await Employee.findOne({ _id: user.employeeId, companyId: req.session.user.companyId });
+    const companyId = req.companyId || req.session.user.companyId;
+    let savedPhone;
+    if (phone !== undefined) {
+      if (!user.employeeId) {
+        return res.status(400).json({ error: 'No employee record linked to your account.' });
+      }
+      const emp = await Employee.findOne({ _id: user.employeeId, companyId });
       if (!emp) return res.status(404).json({ error: 'Employee record not found' });
       emp.phone = String(phone).trim() || undefined;
       await emp.save();
+      savedPhone = emp.phone || '';
     }
     if (displayName !== undefined) user.displayName = String(displayName).trim() || null;
     if (smtpHost !== undefined) user.smtpHost = String(smtpHost).trim() || null;
@@ -312,11 +344,13 @@ async function updateProfile(req, res) {
     if (user.employeeId) sessionUser.employee_id = String(user.employeeId);
     else sessionUser.employee_id = null;
     req.session.user = sessionUser;
-    return res.json({
+    const out = {
       success: true,
       message: 'Profile updated.',
       employee_id: sessionUser.employee_id || null,
-    });
+    };
+    if (savedPhone !== undefined) out.phone = savedPhone;
+    return res.json(out);
   } catch (err) {
     console.error('updateProfile error:', err);
     return res.status(500).json({ error: err.message || 'Server error' });
@@ -571,8 +605,12 @@ async function getLoginInvite(req, res) {
     }
 
     const loginUsername = employee
-      ? await ensureEmployeeLoginUsername(invite.companyId, employee, user)
+      ? await ensureEmployeeLoginUsername(invite.companyId, employee, user, { save: false })
       : String(user.username || '').trim();
+    if (loginUsername !== String(user.username || '').trim()) {
+      user.username = loginUsername;
+      await user.save();
+    }
 
     let password = '';
     if (user.passwordDisplayEncrypted) {
@@ -580,7 +618,13 @@ async function getLoginInvite(req, res) {
         password = decrypt(user.passwordDisplayEncrypted) || '';
       } catch (_) {}
     }
-    if (!password) {
+    let passwordMatchesHash = false;
+    if (password) {
+      try {
+        passwordMatchesHash = bcrypt.compareSync(password, user.password);
+      } catch (_) {}
+    }
+    if (!password || !passwordMatchesHash) {
       return res.status(400).json({ error: 'Login link could not be prepared. Ask your manager to send a new text.' });
     }
 

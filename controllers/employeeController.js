@@ -40,27 +40,47 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
     };
   }
   let tempPassword = '';
+  let shouldPersistCredentials = false;
+
   if (regeneratePassword) {
     tempPassword = generateTempPassword();
-    user.password = bcrypt.hashSync(tempPassword, 10);
-    user.passwordDisplayEncrypted = encrypt(tempPassword) || undefined;
-    user.mustChangePassword = true;
-    await user.save();
+    shouldPersistCredentials = true;
   } else {
     if (user.passwordDisplayEncrypted) {
       try {
         tempPassword = decrypt(user.passwordDisplayEncrypted) || '';
       } catch (_) {}
+      if (tempPassword) {
+        try {
+          if (!bcrypt.compareSync(tempPassword, user.password)) {
+            tempPassword = '';
+          }
+        } catch (_) {
+          tempPassword = '';
+        }
+      }
     }
     if (!tempPassword) {
       tempPassword = generateTempPassword();
-      user.password = bcrypt.hashSync(tempPassword, 10);
-      user.passwordDisplayEncrypted = encrypt(tempPassword) || undefined;
-      user.mustChangePassword = true;
-      await user.save();
+      shouldPersistCredentials = true;
     }
   }
-  const username = await ensureEmployeeLoginUsername(companyId, employee, user);
+
+  if (shouldPersistCredentials) {
+    const passwordDisplayEncrypted = encrypt(tempPassword);
+    if (!passwordDisplayEncrypted) {
+      return { ok: false, error: 'Could not secure login credentials. Check server encryption settings.' };
+    }
+    user.password = bcrypt.hashSync(tempPassword, 10);
+    user.passwordDisplayEncrypted = passwordDisplayEncrypted;
+    user.mustChangePassword = true;
+  }
+
+  const previousUsername = String(user.username || '').trim();
+  const username = await ensureEmployeeLoginUsername(companyId, employee, user, { save: false });
+  if (shouldPersistCredentials || username !== previousUsername) {
+    await user.save();
+  }
   const { loginUrl } = await createLoginInvite(companyId, user._id);
   const companyLabel = await getCompanyDisplayName(companyId);
   const body = [
@@ -515,7 +535,7 @@ async function setEmployeePassword(req, res) {
     const hashed = bcrypt.hashSync(String(password), 10);
     const result = await User.updateOne(
       { companyId, employeeId: employee._id, role: { $in: ['employee', 'manager'] } },
-      { $set: { password: hashed, mustChangePassword: false } }
+      { $set: { password: hashed, mustChangePassword: false }, $unset: { passwordDisplayEncrypted: 1 } }
     );
 
     if (!result.matchedCount) {

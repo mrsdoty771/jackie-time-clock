@@ -52,7 +52,7 @@ async function allocateUniqueLoginUsername(companyId, fullName, fallbackBase, ex
  * Upgrade legacy login usernames that still match the employee number.
  * @returns {Promise<string>} The login username to use (may update the user record).
  */
-async function ensureEmployeeLoginUsername(companyId, employee, user) {
+async function ensureEmployeeLoginUsername(companyId, employee, user, { save = true } = {}) {
   const empNum = String(employee?.employeeNumber || employee?.employee_number || '').trim();
   const stored = String(user?.username || '').trim();
   if (!usernameLooksLikeEmployeeNumber(stored, empNum)) {
@@ -62,9 +62,11 @@ async function ensureEmployeeLoginUsername(companyId, employee, user) {
   const newUsername = await allocateUniqueLoginUsername(companyId, displayName, empNum, user._id);
   if (typeof user.save === 'function') {
     user.username = newUsername;
-    await user.save();
+    if (save) await user.save();
   } else {
-    await User.updateOne({ _id: user._id, companyId }, { $set: { username: newUsername } });
+    if (save) {
+      await User.updateOne({ _id: user._id, companyId }, { $set: { username: newUsername } });
+    }
     user.username = newUsername;
   }
   return newUsername;

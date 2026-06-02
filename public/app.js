@@ -354,7 +354,10 @@ function loadEmployeeProfileForm() {
     const phoneEl = document.getElementById('employee-profile-phone');
     const msgEl = document.getElementById('employee-profile-message');
     if (!phoneEl) return;
-    phoneEl.value = '';
+    if (msgEl) {
+        msgEl.textContent = 'Loading...';
+        msgEl.style.color = '#666';
+    }
     fetch(`${API_BASE}/profile`, { credentials: 'include' })
         .then(async (res) => {
             const text = await res.text();
@@ -369,13 +372,18 @@ function loadEmployeeProfileForm() {
         })
         .then(({ ok, data }) => {
             if (!ok || data.error) {
+                phoneEl.value = '';
                 if (msgEl) {
                     msgEl.textContent = data.error || 'Could not load profile.';
                     msgEl.style.color = 'red';
                 }
                 return;
             }
-            phoneEl.value = data.phone || '';
+            phoneEl.value = formatPhoneNumber(data.phone || '');
+            if (msgEl) {
+                msgEl.textContent = '';
+                msgEl.style.color = '';
+            }
         })
         .catch((err) => {
             if (msgEl) {
@@ -428,6 +436,9 @@ function handleEmployeeProfileSubmit(e) {
         })
         .then(({ ok, data }) => {
             if (ok && data.success) {
+                if (data.phone !== undefined) {
+                    document.getElementById('employee-profile-phone').value = formatPhoneNumber(data.phone || '');
+                }
                 msgEl.textContent = 'Profile updated successfully.';
                 msgEl.style.color = 'green';
                 document.getElementById('employee-profile-new-password').value = '';
@@ -986,7 +997,7 @@ function handleForgotPasswordSubmit(e) {
 function handleLogin(e) {
     e.preventDefault();
     const username = (document.getElementById('login-identifier')?.value || '').trim();
-    const password = document.getElementById('password').value;
+    const password = (document.getElementById('password')?.value || '').trim();
     const companyId = getLoginCompanyId();
     const errorDiv = document.getElementById('login-error');
 
