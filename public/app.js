@@ -632,6 +632,15 @@ function setupEventListeners() {
         maybeSyncEditUsernameFromName();
     });
 
+    document.getElementById('edit-emp-password-toggle')?.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+    });
+    document.getElementById('edit-emp-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePasswordVisibility('edit-emp-password', 'edit-emp-password-toggle');
+    });
+
     document.getElementById('terminate-employee-form')?.addEventListener('submit', handleTerminateEmployeeSubmit);
     document.getElementById('cancel-terminate-employee-btn')?.addEventListener('click', () => {
         document.getElementById('terminate-employee-modal')?.classList.add('hidden');
@@ -797,24 +806,6 @@ function setupEventListeners() {
         input.type = isPassword ? 'text' : 'password';
         btn.setAttribute('aria-label', isPassword ? 'Hide auth token' : 'Show auth token');
         btn.setAttribute('title', isPassword ? 'Hide auth token' : 'Show auth token');
-        if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
-        if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
-    });
-
-    // Edit Employee: eye toggle (delegation so click on icon inside button works)
-    document.getElementById('edit-employee-modal')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('#edit-emp-password-toggle');
-        if (!btn) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const input = document.getElementById('edit-emp-password');
-        const showIcon = btn.querySelector('.pwd-icon-show');
-        const hideIcon = btn.querySelector('.pwd-icon-hide');
-        if (!input) return;
-        const isPassword = input.type === 'password';
-        input.type = isPassword ? 'text' : 'password';
-        btn.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
-        btn.setAttribute('title', isPassword ? 'Hide password' : 'Show password');
         if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
         if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
     });
