@@ -8,6 +8,11 @@ const { encrypt, decrypt } = require('../utils/encrypt');
 const { createLoginInvite, getPublicBaseUrl, BASE_URL_ENV_HINT } = require('../utils/loginInvite');
 const { sendSmsToPhone } = require('../utils/sms');
 const {
+  allocateUniqueLoginUsername,
+  ensureEmployeeLoginUsername,
+  usernameLooksLikeEmployeeNumber,
+} = require('../utils/loginUsername');
+const {
   isSystemClockEmployee,
   excludeSystemClockEmployeesFilter,
   SYSTEM_CLOCK_EMPLOYEE_NUMBER,
@@ -55,9 +60,9 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
       await user.save();
     }
   }
+  const username = await ensureEmployeeLoginUsername(companyId, employee, user);
   const { loginUrl } = await createLoginInvite(companyId, user._id);
   const companyLabel = await getCompanyDisplayName(companyId);
-  const username = String(user.username || '').trim();
   const body = [
     `${companyLabel} login`,
     username ? `Username: ${username}` : '',
@@ -75,37 +80,6 @@ function normalizeStatus(status) {
   const s = String(status).toLowerCase();
   if (s === 'active' || s === 'inactive' || s === 'all') return s;
   return 'active';
-}
-
-/** Login style: first name + last name initial, e.g. "Josh Doe" -> "JoshD". One word -> that word capitalized. */
-function suggestedLoginUsernameFromDisplayName(fullName) {
-  const trimmed = String(fullName || '').trim();
-  if (!trimmed) return '';
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  const firstSan = parts[0].replace(/[^a-zA-Z0-9]/g, '');
-  if (!firstSan) return '';
-  const first = firstSan.charAt(0).toUpperCase() + firstSan.slice(1).toLowerCase();
-  if (parts.length === 1) return first;
-  const last = parts[parts.length - 1];
-  const letter = last.match(/[a-zA-Z]/);
-  if (!letter) return first;
-  return first + letter[0].toUpperCase();
-}
-
-async function allocateUniqueLoginUsername(companyId, fullName, fallbackBase) {
-  let base = suggestedLoginUsernameFromDisplayName(fullName);
-  if (!base) {
-    base = String(fallbackBase || 'user').replace(/[^a-zA-Z0-9]/g, '');
-  }
-  if (!base) base = 'user';
-  let candidate = base;
-  for (let n = 0; n < 500; n += 1) {
-    const clash = await User.findOne({ companyId, username: candidate }).select('_id').lean();
-    if (!clash) return candidate;
-    candidate = `${base}${n + 1}`;
-  }
-  return `${base}${Date.now().toString(36)}`;
 }
 
 // GET /api/employees/public?companyId=...
@@ -310,6 +284,9 @@ async function createEmployee(req, res) {
   }
 
   let loginUsername = bodyUsername != null ? String(bodyUsername).trim() : '';
+  if (loginUsername && usernameLooksLikeEmployeeNumber(loginUsername, employee_number)) {
+    loginUsername = '';
+  }
   if (loginUsername) {
     if (!/^[a-zA-Z0-9_]+$/.test(loginUsername)) {
       return res.status(400).json({ error: 'Username may only contain letters, numbers, and underscores' });
@@ -472,6 +449,11 @@ async function updateEmployee(req, res) {
       }
       if (u.length < 2 || u.length > 64) {
         return res.status(400).json({ error: 'Username must be 2–64 characters' });
+      }
+      if (usernameLooksLikeEmployeeNumber(u, employee.employeeNumber)) {
+        return res.status(400).json({
+          error: 'Login username cannot be the employee number. Use first name + last initial (e.g. EmilyD).',
+        });
       }
       const taken = await User.findOne({ companyId, username: u, _id: { $ne: loginUser._id } })
         .select('_id')

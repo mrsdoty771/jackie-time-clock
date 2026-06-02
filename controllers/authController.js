@@ -8,6 +8,7 @@ const Employee = require('../models/Employee');
 const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
 const { redeemLoginInvite } = require('../utils/loginInvite');
+const { ensureEmployeeLoginUsername } = require('../utils/loginUsername');
 
 function normalizeCompanyId(raw) {
   const companyId = String(raw || '').trim();
@@ -556,18 +557,22 @@ async function getLoginInvite(req, res) {
       companyId: invite.companyId,
       role: { $in: ['employee', 'manager', 'super-admin'] },
     })
-      .select('username passwordDisplayEncrypted mustChangePassword employeeId')
-      .lean();
+      .select('username passwordDisplayEncrypted mustChangePassword employeeId name');
     if (!user) return res.status(404).json({ error: 'Account not found.' });
 
+    let employee = null;
     if (user.employeeId) {
-      const emp = await Employee.findOne({ _id: user.employeeId, companyId: invite.companyId })
-        .select('active')
+      employee = await Employee.findOne({ _id: user.employeeId, companyId: invite.companyId })
+        .select('active name employeeNumber')
         .lean();
-      if (emp && !emp.active) {
+      if (employee && !employee.active) {
         return res.status(403).json({ error: 'This employee account is inactive.' });
       }
     }
+
+    const loginUsername = employee
+      ? await ensureEmployeeLoginUsername(invite.companyId, employee, user)
+      : String(user.username || '').trim();
 
     let password = '';
     if (user.passwordDisplayEncrypted) {
@@ -581,7 +586,7 @@ async function getLoginInvite(req, res) {
 
     return res.json({
       companyId: invite.companyId,
-      username: user.username,
+      username: loginUsername,
       password,
       must_change_password: !!user.mustChangePassword,
     });
