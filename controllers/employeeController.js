@@ -22,7 +22,7 @@ async function getCompanyDisplayName(companyId) {
   return (settings && settings.companyName) ? String(settings.companyName).trim() : 'MVC Time Clock';
 }
 
-async function sendLoginTextForEmployeeUser(companyId, employee, user) {
+async function sendLoginTextForEmployeeUser(companyId, employee, user, { regeneratePassword = false } = {}) {
   const phone = employee.phone ? String(employee.phone).trim() : '';
   if (!phone) {
     return { ok: false, error: 'Employee has no phone number on file.' };
@@ -35,21 +35,37 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user) {
     };
   }
   let tempPassword = '';
-  if (user.passwordDisplayEncrypted) {
-    try {
-      tempPassword = decrypt(user.passwordDisplayEncrypted) || '';
-    } catch (_) {}
-  }
-  if (!tempPassword) {
+  if (regeneratePassword) {
     tempPassword = generateTempPassword();
     user.password = bcrypt.hashSync(tempPassword, 10);
     user.passwordDisplayEncrypted = encrypt(tempPassword) || undefined;
     user.mustChangePassword = true;
     await user.save();
+  } else {
+    if (user.passwordDisplayEncrypted) {
+      try {
+        tempPassword = decrypt(user.passwordDisplayEncrypted) || '';
+      } catch (_) {}
+    }
+    if (!tempPassword) {
+      tempPassword = generateTempPassword();
+      user.password = bcrypt.hashSync(tempPassword, 10);
+      user.passwordDisplayEncrypted = encrypt(tempPassword) || undefined;
+      user.mustChangePassword = true;
+      await user.save();
+    }
   }
   const { loginUrl } = await createLoginInvite(companyId, user._id);
   const companyLabel = await getCompanyDisplayName(companyId);
-  const body = `${companyLabel} login — tap to sign in: ${loginUrl}`;
+  const username = String(user.username || '').trim();
+  const body = [
+    `${companyLabel} login`,
+    username ? `Username: ${username}` : '',
+    `Temporary password: ${tempPassword}`,
+    `Tap to sign in: ${loginUrl}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
   const sms = await sendSmsToPhone(phone, body, companyId);
   if (!sms.ok) return sms;
   return { ok: true, message: 'Login text sent.', loginUrl };
@@ -389,7 +405,9 @@ async function sendEmployeeLoginText(req, res) {
       return res.status(400).json({ error: 'This employee does not have a login account yet.' });
     }
 
-    const smsResult = await sendLoginTextForEmployeeUser(companyId, employee, user);
+    const smsResult = await sendLoginTextForEmployeeUser(companyId, employee, user, {
+      regeneratePassword: true,
+    });
     if (!smsResult.ok) return res.status(400).json({ error: smsResult.error });
     return res.json({ success: true, message: smsResult.message });
   } catch (err) {

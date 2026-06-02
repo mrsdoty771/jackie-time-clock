@@ -49,10 +49,78 @@ window.fetch = function (url) {
 function init() {
     loadCompanyNameForLogin();
     setTimeout(() => {
-        checkAuth();
+        redeemLoginInviteFromUrl().then((handled) => {
+            if (!handled) checkAuth();
+        });
     }, 100);
     setupEventListeners();
     initializeWeekStart();
+}
+
+/** SMS login link: /?invite=token — redeem once, auto-login, then force password change if required. */
+async function redeemLoginInviteFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('invite');
+    if (!token) return false;
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    const errorDiv = document.getElementById('login-error');
+    try {
+        const res = await fetch(`${API_BASE}/login-invite/${encodeURIComponent(token)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+            showLoginPage();
+            if (errorDiv) {
+                errorDiv.textContent = data.error || 'This login link is invalid or has expired.';
+                errorDiv.style.color = 'red';
+            }
+            return true;
+        }
+
+        const companyId = data.companyId || getLoginCompanyId();
+        const loginRes = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: data.username,
+                password: data.password,
+                companyId,
+            }),
+            credentials: 'include',
+        });
+        const loginData = await loginRes.json().catch(() => ({}));
+        if (loginRes.ok && loginData.success) {
+            currentUser = loginData.user;
+            if (loginData.must_change_password || currentUser.must_change_password) {
+                showForcedPasswordChangeUI();
+            } else {
+                showPage(loginData.user.role);
+                loadInitialData();
+            }
+            if (errorDiv) errorDiv.textContent = '';
+            return true;
+        }
+
+        showLoginPage();
+        const idEl = document.getElementById('login-identifier');
+        const pwdEl = document.getElementById('password');
+        if (idEl) idEl.value = data.username || '';
+        if (pwdEl) pwdEl.value = data.password || '';
+        if (errorDiv) {
+            errorDiv.textContent = loginData.error || 'Could not sign in from link. Use the credentials in your text message.';
+            errorDiv.style.color = 'red';
+        }
+        return true;
+    } catch (err) {
+        console.error('Login invite error:', err);
+        showLoginPage();
+        if (errorDiv) {
+            errorDiv.textContent = 'Could not open login link. Try again or enter credentials manually.';
+            errorDiv.style.color = 'red';
+        }
+        return true;
+    }
 }
 
 if (document.readyState === 'loading') {
