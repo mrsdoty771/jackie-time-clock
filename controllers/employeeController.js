@@ -419,7 +419,7 @@ async function updateEmployee(req, res) {
 
   const companyId = req.companyId;
   const { id } = req.params;
-  const { name, employee_number, phone, active, password: newPassword, username: bodyUsername } = req.body;
+  const { name, employee_number, phone, active, password: newPassword, username: bodyUsername, mustChangePassword: bodyMustChangePassword } = req.body;
 
   if (!name || !employee_number) {
     return res.status(400).json({ error: 'Name and employee number are required' });
@@ -486,7 +486,12 @@ async function updateEmployee(req, res) {
     if (newPassword !== undefined && newPassword !== null && String(newPassword).trim().length > 0) {
       const pwdPlain = String(newPassword).trim();
       userUpdates.password = bcrypt.hashSync(pwdPlain, 10);
-      userUpdates.mustChangePassword = false;
+      const forceMustChange =
+        bodyMustChangePassword === true ||
+        bodyMustChangePassword === 1 ||
+        bodyMustChangePassword === '1' ||
+        bodyMustChangePassword === 'true';
+      userUpdates.mustChangePassword = !!forceMustChange;
       const enc = encrypt(pwdPlain);
       if (enc) userUpdates.passwordDisplayEncrypted = enc;
     }
