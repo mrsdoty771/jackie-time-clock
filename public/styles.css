@@ -334,6 +334,56 @@ body {
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
+.employee-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    font-size: 18px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.employee-status-label {
+    color: #444;
+    font-weight: 500;
+}
+
+.employee-status-bar strong {
+    font-weight: 700;
+}
+
+.employee-status-clocked-out {
+    background: #f1f3f5;
+    border: 1px solid #dee2e6;
+}
+
+.employee-status-clocked-out strong {
+    color: #495057;
+}
+
+.employee-status-clocked-in {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+}
+
+.employee-status-clocked-in strong {
+    color: #2e7d32;
+}
+
+.employee-status-on-lunch {
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+}
+
+.employee-status-on-lunch strong {
+    color: #ef6c00;
+}
+
 .records-section-actions {
     display: flex;
     justify-content: flex-end;

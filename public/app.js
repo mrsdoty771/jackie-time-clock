@@ -1195,6 +1195,38 @@ function loadEmployeeRecords() {
         });
 }
 
+function getEmployeePunchStatusFromRecords(records) {
+    const todayStr = getLocalDateStringInTz(new Date(), companyTimezone);
+    const todayRecords = (records || []).filter((record) => {
+        const recordDateStr = getLocalDateStringInTz(record.punch_time, companyTimezone);
+        return recordDateStr === todayStr;
+    });
+
+    const hasClockIn = todayRecords.some((r) => r.punch_type === 'clock_in');
+    const hasClockOut = todayRecords.some((r) => r.punch_type === 'clock_out');
+    const hasLunchIn = todayRecords.some((r) => r.punch_type === 'lunch_in');
+    const hasLunchOut = todayRecords.some((r) => r.punch_type === 'lunch_out');
+
+    if (hasClockOut || !hasClockIn) {
+        return { text: 'Clocked Out', statusClass: 'employee-status-clocked-out' };
+    }
+    if (hasLunchOut && !hasLunchIn) {
+        return { text: 'On Lunch', statusClass: 'employee-status-on-lunch' };
+    }
+    return { text: 'Clocked In', statusClass: 'employee-status-clocked-in' };
+}
+
+function updateEmployeeStatusBar(records) {
+    const bar = document.getElementById('employee-status-bar');
+    const textEl = document.getElementById('employee-status-text');
+    if (!bar || !textEl) return;
+
+    const { text, statusClass } = getEmployeePunchStatusFromRecords(records);
+    textEl.textContent = text;
+    bar.classList.remove('employee-status-clocked-out', 'employee-status-clocked-in', 'employee-status-on-lunch');
+    bar.classList.add(statusClass);
+}
+
 function updatePunchButtonStates(records) {
     const clockInBtn = document.getElementById('clock-in-btn');
     const clockOutBtn = document.getElementById('clock-out-btn');
@@ -1246,6 +1278,8 @@ function updatePunchButtonStates(records) {
         setButtonState(lunchInBtn, true);
         setButtonState(lunchOutBtn, true);
     }
+
+    updateEmployeeStatusBar(records);
 }
 
 function displayEmployeeRecords(records) {
