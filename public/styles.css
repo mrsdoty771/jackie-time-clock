@@ -478,6 +478,36 @@ body {
     min-width: 140px;
 }
 
+#edit-employee-modal .edit-employee-modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    overflow: hidden;
+    padding: 0;
+}
+
+#edit-employee-modal .edit-employee-modal-header {
+    position: relative;
+    flex-shrink: 0;
+    padding: 40px 40px 16px;
+    text-align: center;
+    background: white;
+    border-bottom: 1px solid #eee;
+    border-radius: 15px 15px 0 0;
+}
+
+#edit-employee-modal .edit-employee-modal-header h3 {
+    margin: 0;
+}
+
+#edit-employee-modal .edit-employee-modal-body {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding: 16px 40px 40px;
+    text-align: center;
+}
+
 #edit-employee-modal .close-edit {
     position: absolute;
     top: 12px;
@@ -488,6 +518,7 @@ body {
     color: #333;
     padding: 4px 8px;
     user-select: none;
+    z-index: 1;
 }
 
 .edit-employee-login-actions .btn {

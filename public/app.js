@@ -602,6 +602,8 @@ function setupEventListeners() {
         document.getElementById('edit-employee-form').reset();
         editEmpUsernameManuallyEdited = false;
         editEmpMustChangePassword = false;
+        editEmpStoredPassword = '';
+        editEmpHasStoredPassword = false;
         setEditEmployeeSendLoginMessage('', false);
     });
     
@@ -609,6 +611,8 @@ function setupEventListeners() {
         document.getElementById('edit-employee-modal').classList.add('hidden');
         editEmpUsernameManuallyEdited = false;
         editEmpMustChangePassword = false;
+        editEmpStoredPassword = '';
+        editEmpHasStoredPassword = false;
         setEditEmployeeSendLoginMessage('', false);
     });
 
@@ -640,7 +644,7 @@ function setupEventListeners() {
     document.getElementById('edit-emp-password-toggle')?.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        togglePasswordVisibility('edit-emp-password', 'edit-emp-password-toggle');
+        toggleEditEmpPasswordVisibility();
     });
     document.getElementById('edit-emp-generate-password')?.addEventListener('click', handleEditEmpGeneratePassword);
 
@@ -1909,14 +1913,46 @@ function editEmployee(id) {
         .catch(() => showMessage('Error loading employee', 'error'));
 }
 
-const EDIT_PASSWORD_PLACEHOLDER = '••••••••';
 let editEmpMustChangePassword = false;
+/** Password loaded from API for the employee currently in the edit modal (empty if not stored for viewing). */
+let editEmpStoredPassword = '';
+let editEmpHasStoredPassword = false;
 
 function generateClientTempPassword() {
     const bytes = new Uint8Array(9);
     crypto.getRandomValues(bytes);
     const b64 = btoa(String.fromCharCode(...bytes));
     return b64.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
+}
+
+function resetEditEmpPasswordToggleUi() {
+    const btn = document.getElementById('edit-emp-password-toggle');
+    if (!btn) return;
+    btn.setAttribute('aria-label', 'Show password');
+    btn.setAttribute('title', 'Show password');
+    const showIcon = btn.querySelector('.pwd-icon-show');
+    const hideIcon = btn.querySelector('.pwd-icon-hide');
+    if (showIcon) showIcon.style.display = '';
+    if (hideIcon) hideIcon.style.display = 'none';
+}
+
+function toggleEditEmpPasswordVisibility() {
+    const input = document.getElementById('edit-emp-password');
+    if (!input) return;
+    const value = input.value.trim();
+    const canRevealStored = editEmpHasStoredPassword && editEmpStoredPassword;
+    if (!value && !canRevealStored) {
+        setEditEmployeeSendLoginMessage(
+            'Password is not stored for viewing. Use Create new password or Resend login credentials.',
+            true
+        );
+        return;
+    }
+    if (input.type === 'password' && !value && canRevealStored) {
+        input.value = editEmpStoredPassword;
+    }
+    setEditEmployeeSendLoginMessage('', false);
+    togglePasswordVisibility('edit-emp-password', 'edit-emp-password-toggle');
 }
 
 function showEditEmpPasswordPlaintext() {
@@ -1937,9 +1973,13 @@ function showEditEmpPasswordPlaintext() {
 function handleEditEmpGeneratePassword() {
     const input = document.getElementById('edit-emp-password');
     if (!input) return;
-    input.value = generateClientTempPassword();
+    const generated = generateClientTempPassword();
+    input.value = generated;
     input.removeAttribute('data-is-placeholder');
+    editEmpStoredPassword = generated;
+    editEmpHasStoredPassword = true;
     editEmpMustChangePassword = true;
+    setEditEmployeeSendLoginMessage('', false);
     showEditEmpPasswordPlaintext();
 }
 
@@ -2028,23 +2068,15 @@ function populateEditForm(employee) {
     editEmpMustChangePassword = false;
     const pwdInput = document.getElementById('edit-emp-password');
     const hasRealPassword = employee.password != null && String(employee.password).trim() !== '';
-    if (hasRealPassword) {
-        pwdInput.value = employee.password;
-        pwdInput.removeAttribute('data-is-placeholder');
-    } else {
-        pwdInput.value = EDIT_PASSWORD_PLACEHOLDER;
-        pwdInput.setAttribute('data-is-placeholder', '1');
-    }
+    editEmpStoredPassword = hasRealPassword ? String(employee.password).trim() : '';
+    editEmpHasStoredPassword = hasRealPassword;
+    pwdInput.value = hasRealPassword ? editEmpStoredPassword : '';
     pwdInput.type = 'password';
-    const pwdBtn = document.getElementById('edit-emp-password-toggle');
-    if (pwdBtn) {
-        pwdBtn.setAttribute('aria-label', 'Show password');
-        pwdBtn.setAttribute('title', 'Show password');
-        const showIcon = pwdBtn.querySelector('.pwd-icon-show');
-        const hideIcon = pwdBtn.querySelector('.pwd-icon-hide');
-        if (showIcon) showIcon.style.display = '';
-        if (hideIcon) hideIcon.style.display = 'none';
-    }
+    pwdInput.removeAttribute('data-is-placeholder');
+    pwdInput.placeholder = hasRealPassword
+        ? 'Leave blank to keep current password'
+        : 'Password not available to view';
+    resetEditEmpPasswordToggleUi();
     document.getElementById('edit-emp-status').value = (employee.active === 1 || employee.active === '1') ? '1' : '0';
     const hasManager = employee.has_manager === true || employee.has_manager === '1';
     const managerSectionEl = document.getElementById('edit-employee-manager-section');
@@ -2069,16 +2101,23 @@ function setupEditPasswordPlaceholder() {
     const input = document.getElementById('edit-emp-password');
     if (!input) return;
     input.addEventListener('focus', function () {
-        if (this.getAttribute('data-is-placeholder') === '1') {
+        if (editEmpHasStoredPassword && this.value === editEmpStoredPassword) {
             this.value = '';
             this.removeAttribute('data-is-placeholder');
         }
     });
     input.addEventListener('blur', function () {
-        if (this.value.trim() === '') {
-            this.value = EDIT_PASSWORD_PLACEHOLDER;
-            this.setAttribute('data-is-placeholder', '1');
+        const trimmed = this.value.trim();
+        if (trimmed === '') {
+            if (editEmpHasStoredPassword && editEmpStoredPassword) {
+                this.value = editEmpStoredPassword;
+                this.type = 'password';
+                resetEditEmpPasswordToggleUi();
+            }
             editEmpMustChangePassword = false;
+        } else if (trimmed !== editEmpStoredPassword) {
+            editEmpStoredPassword = trimmed;
+            editEmpHasStoredPassword = true;
         }
     });
 }
@@ -2087,7 +2126,10 @@ function handleEditEmployee(e) {
     e.preventDefault();
     const id = document.getElementById('edit-emp-id').value;
     let newPassword = document.getElementById('edit-emp-password').value.trim();
-    if (newPassword === EDIT_PASSWORD_PLACEHOLDER) newPassword = '';
+    const openedWithStoredPassword = editEmpHasStoredPassword && editEmpStoredPassword;
+    if (openedWithStoredPassword && newPassword === editEmpStoredPassword && !editEmpMustChangePassword) {
+        newPassword = '';
+    }
     const employee = {
         name: document.getElementById('edit-emp-name').value,
         employee_number: document.getElementById('edit-emp-number').value,
@@ -2132,6 +2174,8 @@ function handleEditEmployee(e) {
         document.getElementById('edit-employee-form').reset();
         editEmpUsernameManuallyEdited = false;
         editEmpMustChangePassword = false;
+        editEmpStoredPassword = '';
+        editEmpHasStoredPassword = false;
         const currentFilter = document.getElementById('employee-status-filter')?.value || 'active';
         loadEmployees(currentFilter);
         loadEmployeesForPunch();
