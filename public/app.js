@@ -124,6 +124,32 @@ function getLoginCompanyId() {
     return LOGIN_COMPANY_ID;
 }
 
+/** Day of week 0–6 (Sun–Sat) for a date in the company (or given) timezone. */
+function getLocalDayOfWeekInTz(date, timezone) {
+    const zone = (timezone && String(timezone).trim()) || companyTimezone || 'UTC';
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short' }).format(new Date(date));
+    const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return map[wd] ?? 0;
+}
+
+/** Pay-week start/end as YYYY-MM-DD in company timezone. weekOffset 0 = current week, -1 = previous. */
+function getPayWeekLocalDateRangeInTz(weekOffset = 0) {
+    const weekStart = typeof companyPayWeekStartDay === 'number' && !Number.isNaN(companyPayWeekStartDay)
+        ? companyPayWeekStartDay
+        : 1;
+    const zone = companyTimezone || 'UTC';
+    const todayStr = getLocalDateStringInTz(new Date(), zone);
+    const ref = instantOnLocalDate(todayStr, zone);
+    const day = getLocalDayOfWeekInTz(ref, zone);
+    const diff = (day - weekStart + 7) % 7;
+    const startMs = ref.getTime() - diff * 24 * 60 * 60 * 1000 + weekOffset * 7 * 24 * 60 * 60 * 1000;
+    const endMs = startMs + 6 * 24 * 60 * 60 * 1000;
+    return {
+        startDate: getLocalDateStringInTz(new Date(startMs), zone),
+        endDate: getLocalDateStringInTz(new Date(endMs), zone),
+    };
+}
+
 /** Start date of the pay week containing `date`, for a week that begins on weekStartDay (0–6). */
 function getWeekStartDateForDate(date, weekStartDay) {
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -134,17 +160,11 @@ function getWeekStartDateForDate(date, weekStartDay) {
 }
 
 function initializeWeekStart() {
-    const weekStart = typeof companyPayWeekStartDay === 'number' && !Number.isNaN(companyPayWeekStartDay)
-        ? companyPayWeekStartDay
-        : 1;
-    const today = new Date();
-    const start = getWeekStartDateForDate(today, weekStart);
-    const endDate = new Date(start);
-    endDate.setDate(endDate.getDate() + 6);
+    const { startDate, endDate } = getPayWeekLocalDateRangeInTz(0);
     const rs = document.getElementById('report-start-date');
     const re = document.getElementById('report-end-date');
-    if (rs) rs.value = start.toISOString().split('T')[0];
-    if (re) re.value = endDate.toISOString().split('T')[0];
+    if (rs) rs.value = startDate;
+    if (re) re.value = endDate;
 }
 
 function syncPayWeekEndFromStart() {
@@ -254,42 +274,56 @@ function applyCompanyPayWeekFromSettings(data) {
 }
 
 function loadCompanyTimezone() {
-    fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
+    return fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
             const tz = (data && data.timezone && String(data.timezone).trim()) ? data.timezone : 'UTC';
             companyTimezone = tz;
             applyCompanyPayWeekFromSettings(data);
             initializeWeekStart();
+            setManualPunchDefaultsToCompanyNow();
+            return companyTimezone;
         })
         .catch(() => {
             companyTimezone = 'UTC';
             companyPayWeekStartDay = 1;
             companyPayWeekEndDay = 0;
             initializeWeekStart();
+            return companyTimezone;
         });
+}
+
+function refreshTimezoneDependentViews() {
+    initializeWeekStart();
+    setManualPunchDefaultsToCompanyNow();
+    const activeTab = document.querySelector('.tab-btn.active')?.dataset?.tab;
+    if (activeTab === 'edit-punches') loadPunchesForEdit();
+    if (currentUser?.role === 'employee') {
+        loadEmployeeRecords();
+    }
+    if (activeTab === 'my-clock') loadMyClockPunches();
 }
 
 function showPage(role) {
     hideForcedPasswordChangeUI();
     document.getElementById('login-page').classList.add('hidden');
-    loadCompanyTimezone();
-    if (role === 'manager' || role === 'super-admin') {
-        document.getElementById('manager-page').classList.remove('hidden');
-        switchTab('punches');
-        loadManagerNavCompanyName();
-        loadEmployees();
-        loadEmployeesForPunch();
-        loadEmployeesForReport();
-        loadEmployeesForEditPunches();
-    } else {
-        document.getElementById('employee-page').classList.remove('hidden');
-        updateEmployeePageTitle();
-        updateEmployeeNameDisplay();
-        // Initialize button states to allow clock in until records load
-        updatePunchButtonStates([]);
-        loadEmployeeRecords();
-    }
+    loadCompanyTimezone().then(() => {
+        if (role === 'manager' || role === 'super-admin') {
+            document.getElementById('manager-page').classList.remove('hidden');
+            switchTab('punches');
+            loadManagerNavCompanyName();
+            loadEmployees();
+            loadEmployeesForPunch();
+            loadEmployeesForReport();
+            loadEmployeesForEditPunches();
+        } else {
+            document.getElementById('employee-page').classList.remove('hidden');
+            updateEmployeePageTitle();
+            updateEmployeeNameDisplay();
+            updatePunchButtonStates([]);
+            loadEmployeeRecords();
+        }
+    });
 }
 
 function updateEmployeeNameDisplay() {
@@ -696,11 +730,7 @@ function setupEventListeners() {
     document.getElementById('my-lunch-out-btn')?.addEventListener('click', () => handleManagerPunch('lunch_in'));
     // Manual punch
     document.getElementById('manual-punch-form')?.addEventListener('submit', handleManualPunch);
-    const now = new Date();
-    const manualDateEl = document.getElementById('manual-punch-date');
-    const manualTimeEl = document.getElementById('manual-punch-time');
-    if (manualDateEl && !manualDateEl.value) manualDateEl.value = now.toISOString().slice(0, 10);
-    if (manualTimeEl && !manualTimeEl.value) manualTimeEl.value = now.toTimeString().slice(0, 5);
+    setManualPunchDefaultsToCompanyNow();
     bindPunchDateInputsFullClick();
 
     // Reports
@@ -1137,21 +1167,9 @@ function formatDateInputValue(dateObj) {
 }
 
 function getEmployeeHistoryRangeSelection() {
-    const todayLocal = getLocalDateStringInTz(new Date(), companyTimezone);
-    const today = new Date(`${todayLocal}T12:00:00`);
-    const mondayStart = 1; // "This Week" and "Last Week" are calendar weeks (Mon-Sun)
-
     if (employeeHistoryRangeMode === 'last_week') {
-        const thisWeekStart = getWeekStartDateForDate(today, mondayStart);
-        const start = new Date(thisWeekStart);
-        start.setDate(start.getDate() - 7);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        return {
-            startDate: formatDateInputValue(start),
-            endDate: formatDateInputValue(end),
-            label: 'Last Week',
-        };
+        const range = getPayWeekLocalDateRangeInTz(-1);
+        return { ...range, label: 'Last Week' };
     }
 
     if (employeeHistoryRangeMode === 'custom') {
@@ -1161,14 +1179,8 @@ function getEmployeeHistoryRangeSelection() {
         return { startDate, endDate, label: 'Custom Dates' };
     }
 
-    const start = getWeekStartDateForDate(today, mondayStart);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    return {
-        startDate: formatDateInputValue(start),
-        endDate: formatDateInputValue(end),
-        label: 'This Week',
-    };
+    const range = getPayWeekLocalDateRangeInTz(0);
+    return { ...range, label: 'This Week' };
 }
 
 function loadEmployeeRecords() {
@@ -1282,6 +1294,40 @@ function updatePunchButtonStates(records) {
     updateEmployeeStatusBar(records);
 }
 
+function calculateDayWorkHours(clockIn, clockOut, lunchIn, lunchOut, asOf) {
+    if (!clockIn) return 0;
+
+    let effectiveEnd = clockOut;
+    if (!effectiveEnd) {
+        if (lunchOut && !lunchIn) {
+            effectiveEnd = lunchOut;
+        } else {
+            effectiveEnd = asOf;
+        }
+    }
+
+    if (effectiveEnd <= clockIn) return 0;
+
+    let hours = (effectiveEnd - clockIn) / (1000 * 60 * 60);
+    if (lunchOut && lunchIn && lunchOut < lunchIn) {
+        hours -= (lunchIn - lunchOut) / (1000 * 60 * 60);
+    }
+    return Math.max(0, hours);
+}
+
+/** Last minute of a local calendar day in the company timezone. */
+function getEndOfLocalDayInstant(localDateStr, timezone) {
+    const zone = (timezone && String(timezone).trim()) || companyTimezone || 'UTC';
+    const start = instantOnLocalDate(localDateStr, zone);
+    let last = start;
+    for (let i = 1; i <= 24 * 60; i++) {
+        const d = new Date(start.getTime() + i * 60 * 1000);
+        if (getLocalDateStringInTz(d, zone) === localDateStr) last = d;
+        else break;
+    }
+    return last;
+}
+
 function displayEmployeeRecords(records) {
     const container = document.getElementById('employee-records');
     if (records.length === 0) {
@@ -1301,6 +1347,8 @@ function displayEmployeeRecords(records) {
     
     // Sort days (most recent first)
     const sortedDays = Object.keys(recordsByDay).sort((a, b) => new Date(b) - new Date(a));
+    const todayStr = getLocalDateStringInTz(new Date(), companyTimezone);
+    const now = new Date();
     
     // Generate HTML for each day
     const daysHtml = sortedDays.map(dateStr => {
@@ -1323,16 +1371,8 @@ function displayEmployeeRecords(records) {
             if (record.punch_type === 'lunch_out') lunchOut = punchTime; // Go to lunch
         });
         
-        let totalHours = 0;
-        if (clockIn && clockOut) {
-            totalHours = (clockOut - clockIn) / (1000 * 60 * 60);
-            // Subtract lunch time: lunchOut is when they left, lunchIn is when they returned
-            if (lunchOut && lunchIn && lunchOut < lunchIn) {
-                const lunchHours = (lunchIn - lunchOut) / (1000 * 60 * 60);
-                totalHours -= lunchHours;
-            }
-            totalHours = Math.max(0, totalHours);
-        }
+        const asOf = dateStr === todayStr ? now : getEndOfLocalDayInstant(dateStr, companyTimezone);
+        const totalHours = calculateDayWorkHours(clockIn, clockOut, lunchIn, lunchOut, asOf);
         
         const displayDate = formatDate(dateStr);
         const punchesHtml = dayRecords.map(record => {
@@ -1820,20 +1860,29 @@ function displayPunchesForEdit(punches) {
 
 function editPunch(id) {
     if (!id) return;
-    fetch(`${API_BASE}/punches/${id}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
+    Promise.all([
+        fetch(`${API_BASE}/punches/${id}`, { credentials: 'include' }).then((res) => res.json()),
+        fetch(`${API_BASE}/company-settings`, { credentials: 'include' })
+            .then((res) => res.json())
+            .catch(() => ({})),
+    ])
+        .then(([data, settings]) => {
             if (data.error) {
                 showMessage(data.error || 'Punch not found', 'error');
                 return;
             }
-            const d = data.punch_time ? new Date(data.punch_time) : new Date();
-            const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-            const timeStr = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
+            if (settings?.timezone && String(settings.timezone).trim()) {
+                companyTimezone = String(settings.timezone).trim();
+            }
+            const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(data.punch_time, companyTimezone);
+            if (!dateStr || !timeStr) {
+                showMessage('Could not load punch time for editing.', 'error');
+                return;
+            }
             document.getElementById('edit-punch-id').value = data.id || id;
             document.getElementById('edit-punch-type').value = data.punch_type || 'clock_in';
             document.getElementById('edit-punch-date').value = dateStr;
-            document.getElementById('edit-punch-time').value = timeStr;
+            document.getElementById('edit-punch-time').value = timeStr.slice(0, 5);
             document.getElementById('edit-punch-notes').value = data.notes || '';
             const origWrap = document.getElementById('edit-punch-original-wrap');
             const origText = document.getElementById('edit-punch-original-text');
@@ -1872,26 +1921,40 @@ function editPunch(id) {
 function handleEditPunchSubmit(e) {
     e.preventDefault();
     const id = document.getElementById('edit-punch-id').value;
-    if (!id) return;
+    if (!id) {
+        showMessage('Punch ID missing. Close and open Edit again.', 'error');
+        return;
+    }
     const punchType = document.getElementById('edit-punch-type').value;
     const date = document.getElementById('edit-punch-date').value;
     const time = document.getElementById('edit-punch-time').value;
     const notes = document.getElementById('edit-punch-notes').value.trim();
-    const punchTime = date && time ? `${date}T${time}` : new Date().toISOString();
+    const utcDate = localDateTimeInTzToUtc(date, time, companyTimezone);
+    if (!utcDate || Number.isNaN(utcDate.getTime())) {
+        showMessage('Invalid date or time. Check the date and time fields.', 'error');
+        return;
+    }
+    const punchTime = utcDate.toISOString();
     fetch(`${API_BASE}/punches/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ punch_type: punchType, punch_time: punchTime, notes: notes || null })
     })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
+        .then(async (res) => {
+            let data = {};
+            try {
+                data = await res.json();
+            } catch (_) {}
+            return { ok: res.ok, status: res.status, data };
+        })
+        .then(({ ok, status, data }) => {
+            if (ok && data.success) {
                 document.getElementById('edit-punch-modal').classList.add('hidden');
                 showMessage('Punch updated', 'success');
                 loadPunchesForEdit();
             } else {
-                showMessage(data.error || 'Failed to update punch', 'error');
+                showMessage(data.error || `Failed to update punch (${status})`, 'error');
             }
         })
         .catch(() => showMessage('Error updating punch', 'error'));
@@ -2744,7 +2807,14 @@ function handleManualPunch(e) {
     }
     const punchDate = document.getElementById('manual-punch-date')?.value?.trim() || '';
     const punchTimeOnly = document.getElementById('manual-punch-time')?.value?.trim() || '';
-    const manualPunchTime = (punchDate && punchTimeOnly) ? `${punchDate}T${punchTimeOnly}` : null;
+    const utcDate = (punchDate && punchTimeOnly)
+        ? localDateTimeInTzToUtc(punchDate, punchTimeOnly, companyTimezone)
+        : null;
+    if (punchDate && punchTimeOnly && (!utcDate || Number.isNaN(utcDate.getTime()))) {
+        showMessage('Invalid date or time.', 'error');
+        return;
+    }
+    const manualPunchTime = utcDate ? utcDate.toISOString() : null;
     const punch = {
         employee_id: employeeId,
         punch_type: document.getElementById('punch-type').value,
@@ -2772,11 +2842,11 @@ function handleManualPunch(e) {
                 document.getElementById('manual-punch-form').reset();
                 const select = document.getElementById('punch-employee');
                 if (select && select.options.length) select.selectedIndex = 0;
-                const now = new Date();
+                const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
                 const dateEl = document.getElementById('manual-punch-date');
                 const timeEl = document.getElementById('manual-punch-time');
-                if (dateEl) dateEl.value = now.toISOString().slice(0, 10);
-                if (timeEl) timeEl.value = now.toTimeString().slice(0, 5);
+                if (dateEl && dateStr) dateEl.value = dateStr;
+                if (timeEl && timeStr) timeEl.value = timeStr.slice(0, 5);
             } else {
                 showMessage(data.error || 'Failed to record punch', 'error');
             }
@@ -3483,14 +3553,19 @@ function handleCompanySettings(e) {
                 if (data.pay_week_start_day !== undefined && data.pay_week_start_day !== null) {
                     companyPayWeekStartDay = data.pay_week_start_day;
                     companyPayWeekEndDay = data.pay_week_end_day;
-                    initializeWeekStart();
                 }
                 applyCompanyTwilioFromSettings(data);
                 const tokenEl = document.getElementById('company-twilio-auth-token');
                 if (tokenEl) tokenEl.value = '';
-                if (messageDiv) messageDiv.innerHTML = '<p style="color: green;">Company settings saved successfully! The login page and dashboard will update.</p>';
+                const tzLabel = document.getElementById('company-timezone')?.selectedOptions?.[0]?.textContent
+                    || data.timezone
+                    || 'UTC';
+                if (messageDiv) {
+                    messageDiv.innerHTML = `<p style="color: green;">Company settings saved. Timezone: <strong>${tzLabel}</strong>. Punch times and reports will use this timezone.</p>`;
+                }
                 updateLoginPageTitle(data.company_name);
                 loadManagerNavCompanyName();
+                refreshTimezoneDependentViews();
             } else {
                 if (messageDiv) messageDiv.innerHTML = `<p style="color: red;">${data.error || 'Failed to save settings'}</p>`;
             }
@@ -3637,6 +3712,87 @@ function formatDateTimeInTz(date, tz) {
 
 function formatDateTime(date) {
     return formatDateTimeInTz(date, companyTimezone);
+}
+
+/** Split a UTC instant into YYYY-MM-DD and HH:MM:SS in the company (or given) timezone. */
+function utcToLocalDateAndTimeInTz(utcDate, timezone) {
+    const zone = (timezone && String(timezone).trim()) || companyTimezone || 'UTC';
+    const d = new Date(utcDate);
+    if (Number.isNaN(d.getTime())) return { dateStr: '', timeStr: '' };
+    const dateStr = d.toLocaleDateString('en-CA', {
+        timeZone: zone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: zone,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    }).formatToParts(d);
+    const get = (type) => parts.find((p) => p.type === type)?.value || '00';
+    const timeStr = `${get('hour').padStart(2, '0')}:${get('minute').padStart(2, '0')}:${get('second').padStart(2, '0')}`;
+    return { dateStr, timeStr };
+}
+
+/** Parse YYYY-MM-DD + HH:mm(:ss) as company-local wall time → UTC Date. */
+function localDateTimeInTzToUtc(localDateStr, timeStr, timezone) {
+    const zone = (timezone && String(timezone).trim()) || companyTimezone || 'UTC';
+    const dateStr = String(localDateStr || '').trim().slice(0, 10);
+    const targetTime = normalizeLocalTimeInput(timeStr);
+    if (!dateStr || !targetTime) return null;
+
+    const start = getStartOfLocalDayInstant(dateStr, zone);
+    for (let min = 0; min < 24 * 60; min++) {
+        const d = new Date(start.getTime() + min * 60 * 1000);
+        if (getLocalDateStringInTz(d, zone) !== dateStr) continue;
+        const local = utcToLocalDateAndTimeInTz(d, zone);
+        if (local.dateStr === dateStr && local.timeStr === targetTime) return d;
+    }
+    return null;
+}
+
+function normalizeLocalTimeInput(timeStr) {
+    let raw = String(timeStr || '').trim();
+    if (!raw) return null;
+    const upper = raw.toUpperCase();
+    const isPm = /\bPM\b/.test(upper) || upper.endsWith('PM');
+    const isAm = /\bAM\b/.test(upper) || upper.endsWith('AM');
+    raw = raw.replace(/\s*(AM|PM)\s*$/i, '').trim();
+    const parts = raw.split(':');
+    if (parts.length < 2) return null;
+    let hh = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1], 10);
+    const ss = parseInt(String(parts[2] || '0').replace(/\D/g, ''), 10);
+    if ([hh, mm, ss].some((n) => Number.isNaN(n))) return null;
+    if (isPm && hh < 12) hh += 12;
+    if (isAm && hh === 12) hh = 0;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+function getStartOfLocalDayInstant(localDateStr, timezone) {
+    const zone = (timezone && String(timezone).trim()) || companyTimezone || 'UTC';
+    const s = String(localDateStr || '').trim().slice(0, 10);
+    const base = new Date(s + 'T12:00:00.000Z').getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    let startUtc = null;
+    for (let offset = -dayMs; offset <= dayMs; offset += 15 * 60 * 1000) {
+        const T = new Date(base + offset);
+        if (getLocalDateStringInTz(T, zone) === s) {
+            if (startUtc == null || T < startUtc) startUtc = T;
+        }
+    }
+    return startUtc || instantOnLocalDate(s, zone);
+}
+
+function setManualPunchDefaultsToCompanyNow() {
+    const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
+    const manualDateEl = document.getElementById('manual-punch-date');
+    const manualTimeEl = document.getElementById('manual-punch-time');
+    if (manualDateEl && !manualDateEl.value && dateStr) manualDateEl.value = dateStr;
+    if (manualTimeEl && !manualTimeEl.value && timeStr) manualTimeEl.value = timeStr.slice(0, 5);
 }
 
 /** Find a UTC instant that falls on localDateStr in the given IANA timezone. */

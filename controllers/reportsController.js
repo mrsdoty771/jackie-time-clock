@@ -11,6 +11,7 @@ const {
   formatDateTimeInTz,
   formatLocalDateInTz,
 } = require('../utils/timezone');
+const { calculateDayWorkHours } = require('../utils/workHours');
 
 function formatPunchType(type) {
   return String(type || '').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -76,20 +77,12 @@ async function getReportData(companyId, user, startDateStr, endDateStr, employee
         if (p.type === 'lunch_in') lunchIn = new Date(p.time);
         if (p.type === 'lunch_out') lunchOut = new Date(p.time);
       });
-      let effectiveClockOut = clockOut;
+      let asOf = new Date();
       if (clockIn && !clockOut) {
         const { endUtc: dayEndUtc } = getUtcRangeForLocalDate(day.date, tz);
-        const now = new Date();
-        effectiveClockOut = dayEndUtc > now ? now : dayEndUtc;
+        asOf = dayEndUtc > asOf ? asOf : dayEndUtc;
       }
-      let hours = 0;
-      if (clockIn && effectiveClockOut) {
-        hours = (effectiveClockOut - clockIn) / (1000 * 60 * 60);
-        if (lunchIn && lunchOut) {
-          hours -= (lunchIn - lunchOut) / (1000 * 60 * 60);
-        }
-        hours = Math.max(0, hours);
-      }
+      const hours = calculateDayWorkHours({ clockIn, clockOut, lunchIn, lunchOut, asOf });
       day.hours = parseFloat(hours.toFixed(2));
       emp.total_hours += day.hours;
     });

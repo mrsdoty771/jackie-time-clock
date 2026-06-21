@@ -8,6 +8,17 @@ const CompanySettings = require('../models/CompanySettings');
 /** Default timezone when none is set */
 const DEFAULT_TZ = 'UTC';
 
+function isValidIanaTimezone(tz) {
+  const s = String(tz || '').trim();
+  if (!s) return false;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: s });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
  * Get company timezone from settings (e.g. 'America/New_York').
  * @param {string} companyId
@@ -139,6 +150,69 @@ function formatLocalDateInTz(localDateStr, timezone, options = {}) {
   });
 }
 
+function utcToLocalDateAndTimeParts(utcDate, timezone) {
+  const tz = timezone && String(timezone).trim() ? timezone : DEFAULT_TZ;
+  const d = new Date(utcDate);
+  if (Number.isNaN(d.getTime())) return { dateStr: '', timeStr: '' };
+  const dateStr = getLocalDateStringInTz(d, tz);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type) => parts.find((p) => p.type === type)?.value || '00';
+  const timeStr = `${get('hour').padStart(2, '0')}:${get('minute').padStart(2, '0')}:${get('second').padStart(2, '0')}`;
+  return { dateStr, timeStr };
+}
+
+function normalizeLocalTimeInput(timeStr) {
+  const parts = String(timeStr || '').trim().split(':');
+  if (parts.length < 2) return null;
+  const hh = parseInt(parts[0], 10);
+  const mm = parseInt(parts[1], 10);
+  const ss = parseInt(parts[2] || '0', 10);
+  if ([hh, mm, ss].some((n) => Number.isNaN(n))) return null;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+/** Parse YYYY-MM-DD + HH:mm(:ss) as company-local wall time → UTC Date. */
+function localDateTimeInTzToUtc(localDateStr, timeStr, timezone) {
+  const tz = timezone && String(timezone).trim() ? timezone : DEFAULT_TZ;
+  const dateStr = String(localDateStr || '').trim().slice(0, 10);
+  const targetTime = normalizeLocalTimeInput(timeStr);
+  if (!dateStr || !targetTime) return null;
+
+  const { startUtc } = getUtcRangeForLocalDate(dateStr, tz);
+  for (let min = 0; min < 24 * 60; min++) {
+    const d = new Date(startUtc.getTime() + min * 60 * 1000);
+    if (getLocalDateStringInTz(d, tz) !== dateStr) continue;
+    const local = utcToLocalDateAndTimeParts(d, tz);
+    if (local.dateStr === dateStr && local.timeStr === targetTime) return d;
+  }
+  return null;
+}
+
+/**
+ * Parse punch time from API/client: ISO UTC (with Z/offset) or legacy local YYYY-MM-DDTHH:mm(:ss).
+ */
+async function parsePunchTimeInput(punchTimeRaw, companyId) {
+  const raw = String(punchTimeRaw ?? '').trim();
+  if (!raw) return null;
+  if (/Z$|[+-]\d{2}:\d{2}$/.test(raw)) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}:\d{2}(?::\d{2})?)$/);
+  if (m) {
+    const tz = await getCompanyTimezone(companyId);
+    return localDateTimeInTzToUtc(m[1], m[2], tz);
+  }
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 module.exports = {
   getCompanyTimezone,
   getLocalDateStringInTz,
@@ -146,5 +220,9 @@ module.exports = {
   getTodayInTz,
   formatDateTimeInTz,
   formatLocalDateInTz,
+  utcToLocalDateAndTimeParts,
+  localDateTimeInTzToUtc,
+  parsePunchTimeInput,
+  isValidIanaTimezone,
   DEFAULT_TZ,
 };

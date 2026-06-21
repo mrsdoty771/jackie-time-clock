@@ -2,6 +2,7 @@ const CompanySettings = require('../models/CompanySettings');
 const Employee = require('../models/Employee');
 const { encrypt } = require('../utils/encrypt');
 const { isSystemClockEmployee } = require('../utils/systemEmployee');
+const { isValidIanaTimezone } = require('../utils/timezone');
 
 function normalizeCompanyId(raw) {
   const v = String(raw || '').trim();
@@ -172,6 +173,9 @@ async function updateCompanySettings(req, res) {
     }
     if (timezone !== undefined) {
       const tz = String(timezone || '').trim();
+      if (tz.length > 0 && !isValidIanaTimezone(tz)) {
+        return res.status(400).json({ error: 'Invalid timezone. Choose a value from the list.' });
+      }
       update.timezone = tz.length > 0 ? tz : 'UTC';
     }
     if (twilio_account_sid !== undefined) {

@@ -1,7 +1,7 @@
 const Punch = require('../models/Punch');
 const Employee = require('../models/Employee');
 const { sendPunchNotification } = require('../utils/sms');
-const { getCompanyTimezone, getUtcRangeForLocalDate } = require('../utils/timezone');
+const { getCompanyTimezone, getUtcRangeForLocalDate, parsePunchTimeInput } = require('../utils/timezone');
 
 const { SYSTEM_CLOCK_EMPLOYEE_NUMBER } = require('../utils/systemEmployee');
 
@@ -121,8 +121,8 @@ async function createPunch(req, res) {
 
     let punchTime = new Date();
     if (punch_time !== undefined && punch_time !== null && String(punch_time).trim()) {
-      const parsed = new Date(String(punch_time).trim());
-      if (Number.isNaN(parsed.getTime())) {
+      const parsed = await parsePunchTimeInput(punch_time, companyId);
+      if (!parsed) {
         return res.status(400).json({ error: 'Invalid punch time' });
       }
       punchTime = parsed;
@@ -257,15 +257,17 @@ async function updatePunch(req, res) {
 
     const validTypes = ['clock_in', 'clock_out', 'lunch_in', 'lunch_out'];
     const nextPunchType = punch_type !== undefined ? punch_type : punch.punchType;
-    const nextPunchTime = punch_time !== undefined ? new Date(punch_time) : new Date(punch.punchTime);
+    let nextPunchTime = punch_time !== undefined ? await parsePunchTimeInput(punch_time, companyId) : new Date(punch.punchTime);
 
     if (punch_type !== undefined) {
       if (!validTypes.includes(punch_type)) return res.status(400).json({ error: 'Invalid punch type' });
       punch.punchType = punch_type;
     }
     if (punch_time !== undefined) {
-      const t = new Date(punch_time);
-      if (Number.isNaN(t.getTime())) return res.status(400).json({ error: 'Invalid punch time' });
+      if (!nextPunchTime || Number.isNaN(nextPunchTime.getTime())) {
+        return res.status(400).json({ error: 'Invalid punch time' });
+      }
+      const t = nextPunchTime;
       const oldMs = punch.punchTime ? new Date(punch.punchTime).getTime() : null;
       if (oldMs != null && t.getTime() !== oldMs) {
         if (punch.originalPunchTime == null) {
