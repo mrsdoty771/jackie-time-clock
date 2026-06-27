@@ -2899,9 +2899,119 @@ function generateReport() {
         });
 }
 
+function formatReportHours(hours) {
+    return Number(hours || 0).toFixed(2);
+}
+
+/** Decimal hours → H:MM (e.g. 7.95 → "7:57", 36.75 → "36:45"). */
+function formatHoursAsHMM(hours) {
+    const h = Number(hours) || 0;
+    let wholeHours = Math.floor(h);
+    let minutes = Math.round((h - wholeHours) * 60);
+    if (minutes === 60) {
+        wholeHours += 1;
+        minutes = 0;
+    }
+    return `${wholeHours}:${String(minutes).padStart(2, '0')}`;
+}
+
+/** M/D/YYYY for timesheet Work Date column. */
+function formatShortDate(dateStr) {
+    const s = String(dateStr || '').trim().slice(0, 10);
+    if (!s) return '';
+    const [y, m, d] = s.split('-');
+    return `${Number(m)}/${Number(d)}/${y}`;
+}
+
+function formatTimeOnly(date) {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-US', {
+        timeZone: companyTimezone || 'UTC',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
+function getDayPunchCell(day, type) {
+    const punches = [...(day.punches || [])].sort((a, b) => new Date(a.time) - new Date(b.time));
+    const match = punches.find((p) => p.type === type);
+    return match ? formatTimeOnly(match.time) : '';
+}
+
+function getDayNotes(day) {
+    return (day.punches || [])
+        .filter((p) => p.notes)
+        .map((p) => p.notes)
+        .join('; ');
+}
+
+function buildTimesheetRow(day) {
+    const notes = getDayNotes(day);
+    return `
+        <tr>
+            <td>${formatShortDate(day.date)}</td>
+            <td>${getDayPunchCell(day, 'clock_in')}</td>
+            <td>${getDayPunchCell(day, 'lunch_out')}</td>
+            <td>${getDayPunchCell(day, 'lunch_in')}</td>
+            <td>${getDayPunchCell(day, 'clock_out')}</td>
+            <td class="timesheet-hours">${formatHoursAsHMM(day.hours)}</td>
+            <td class="timesheet-notes">${notes ? escapeHtml(notes) : ''}</td>
+        </tr>
+    `;
+}
+
+function buildEmployeeTimesheet(emp) {
+    const days = Object.values(emp.days)
+        .filter((day) => day.punches && day.punches.length > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    const rowsHtml = days.length
+        ? days.map(buildTimesheetRow).join('')
+        : '<tr><td colspan="7" class="timesheet-empty">No punches in this period</td></tr>';
+
+    return `
+        <section class="timesheet-employee">
+            <h3 class="timesheet-employee-name">${escapeHtml(emp.employee_name)}</h3>
+            <table class="timesheet-table">
+                <colgroup>
+                    <col class="col-date">
+                    <col class="col-time">
+                    <col class="col-time">
+                    <col class="col-time">
+                    <col class="col-time">
+                    <col class="col-hours">
+                    <col class="col-notes">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Work Date</th>
+                        <th>Time In</th>
+                        <th>Lunch Out</th>
+                        <th>Lunch In</th>
+                        <th>Time Out</th>
+                        <th>Total Hours</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="5"></td>
+                        <td class="timesheet-grand-total">${formatHoursAsHMM(emp.total_hours)}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </section>
+    `;
+}
+
 function displayReport(reportData) {
     const container = document.getElementById('report-results');
     const printBtn = document.getElementById('print-report-btn');
+    const startDate = document.getElementById('report-start-date')?.value || '';
+    const endDate = document.getElementById('report-end-date')?.value || '';
     if (!container) return;
     if (!Array.isArray(reportData)) {
         container.innerHTML = '<p>No report data.</p>';
@@ -2916,38 +3026,22 @@ function displayReport(reportData) {
         return;
     }
     
-    // Show print and email buttons if there's data
     if (printBtn) printBtn.style.display = 'inline-block';
     const emailBtn = document.getElementById('email-report-btn');
     if (emailBtn) emailBtn.style.display = 'inline-block';
+
+    const sheetsHtml = reportData.map(buildEmployeeTimesheet).join('');
     
-    container.innerHTML = reportData.map(emp => {
-        const daysHtml = Object.values(emp.days)
-            .sort((a, b) => a.date.localeCompare(b.date))
-            .map(day => {
-            const punchesHtml = day.punches.map(p => {
-                const date = new Date(p.time);
-                return `<div>${formatPunchType(p.type)}: ${formatDateTime(date)}${p.notes ? ` (${p.notes})` : ''}</div>`;
-            }).join('');
-            
-            return `
-                <div class="day-record">
-                    <div class="day-header">${formatDate(day.date)} - ${day.hours} hours</div>
-                    <div class="day-punches">${punchesHtml}</div>
-                </div>
-            `;
-        }).join('');
-        
-        return `
-            <div class="report-card">
-                <h4>${emp.employee_name} (${emp.employee_number})</h4>
-                <div class="report-summary">
-                    <div class="total-hours">Total Hours: ${emp.total_hours}</div>
-                </div>
-                ${daysHtml}
+    container.innerHTML = `
+        <div class="timesheet-header">
+            <h2 class="timesheet-title">Time Sheet</h2>
+            <div class="timesheet-dates">
+                <span><strong>Start Date</strong> ${formatShortDate(startDate)}</span>
+                <span><strong>End Date</strong> ${formatShortDate(endDate)}</span>
             </div>
-        `;
-    }).join('');
+        </div>
+        ${sheetsHtml}
+    `;
 }
 
 function printReport() {
@@ -2974,109 +3068,101 @@ function printReport() {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Time Clock Report</title>
+            <title>Time Sheet</title>
             <style>
                 @media print {
-                    @page {
-                        margin: 1cm;
-                    }
-                    body {
-                        margin: 0;
-                        padding: 20px;
-                        font-family: Arial, sans-serif;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
+                    @page { margin: 1cm; }
+                    body { margin: 0; padding: 12px; }
                 }
                 body {
-                    font-family: Arial, sans-serif;
+                    font-family: Arial, Helvetica, sans-serif;
                     margin: 0;
-                    padding: 20px;
-                    color: #333;
+                    padding: 16px;
+                    color: #000;
+                    font-size: 13px;
                 }
-                .report-header {
-                    text-align: center;
-                    margin-bottom: 30px;
-                    border-bottom: 2px solid #667eea;
-                    padding-bottom: 15px;
+                .timesheet-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                    margin-bottom: 20px;
+                    border-bottom: 2px solid #000;
+                    padding-bottom: 8px;
                 }
-                .report-header h1 {
+                .timesheet-title {
                     margin: 0;
-                    color: #667eea;
-                    font-size: 24px;
-                }
-                .report-header p {
-                    margin: 5px 0;
-                    color: #666;
-                }
-                .report-card {
-                    background: white;
-                    padding: 20px;
-                    margin-bottom: 25px;
-                    border: 1px solid #ddd;
-                    page-break-inside: avoid;
-                }
-                .report-card h4 {
-                    color: #667eea;
-                    margin-bottom: 15px;
-                    font-size: 18px;
-                    border-bottom: 1px solid #eee;
-                    padding-bottom: 10px;
-                }
-                .report-summary {
-                    background: #f8f9fa;
-                    padding: 15px;
-                    margin-bottom: 15px;
-                    border-radius: 5px;
-                }
-                .total-hours {
-                    font-size: 20px;
+                    font-size: 22px;
                     font-weight: bold;
-                    color: #667eea;
                 }
-                .day-record {
-                    padding: 10px;
-                    border-bottom: 1px solid #e0e0e0;
-                    margin-bottom: 10px;
+                .timesheet-dates span { margin-left: 20px; }
+                .timesheet-employee { margin-bottom: 24px; page-break-inside: avoid; }
+                .timesheet-employee-name {
+                    margin: 0 0 6px;
+                    font-size: 15px;
+                    font-weight: bold;
                 }
-                .day-record:last-child {
-                    border-bottom: none;
+                .timesheet-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 12px;
+                    table-layout: fixed;
                 }
-                .day-header {
-                    font-weight: 600;
-                    color: #333;
-                    margin-bottom: 8px;
-                    font-size: 16px;
+                .timesheet-table col.col-date { width: 74px; }
+                .timesheet-table col.col-time { width: 58px; }
+                .timesheet-table col.col-hours { width: 44px; }
+                .timesheet-table th,
+                .timesheet-table td {
+                    border: 1px solid #ccc;
+                    padding: 4px 5px;
+                    text-align: left;
+                    vertical-align: top;
                 }
-                .day-punches {
+                .timesheet-table th:nth-child(2),
+                .timesheet-table th:nth-child(3),
+                .timesheet-table th:nth-child(4),
+                .timesheet-table th:nth-child(5),
+                .timesheet-table td:nth-child(2),
+                .timesheet-table td:nth-child(3),
+                .timesheet-table td:nth-child(4),
+                .timesheet-table td:nth-child(5) {
+                    padding: 4px 2px;
+                    font-size: 11px;
+                    white-space: nowrap;
+                    text-align: center;
+                }
+                .timesheet-table th {
+                    background: #f5f5f5;
+                    font-weight: bold;
+                    font-size: 10px;
+                }
+                .timesheet-hours { text-align: right; white-space: nowrap; }
+                .timesheet-grand-total {
+                    color: #c00;
+                    font-weight: bold;
+                    text-align: right;
                     font-size: 14px;
-                    color: #666;
-                    margin-left: 15px;
                 }
-                .day-punches div {
-                    margin: 5px 0;
+                .timesheet-notes {
+                    font-size: 11px;
+                    color: #444;
+                    word-wrap: break-word;
+                    overflow-wrap: anywhere;
                 }
+                .timesheet-empty { text-align: center; color: #666; font-style: italic; }
                 .print-footer {
-                    margin-top: 30px;
-                    padding-top: 15px;
-                    border-top: 1px solid #ddd;
+                    margin-top: 20px;
+                    padding-top: 8px;
+                    border-top: 1px solid #ccc;
                     text-align: center;
                     color: #666;
-                    font-size: 12px;
+                    font-size: 11px;
                 }
             </style>
         </head>
         <body>
-            <div class="report-header">
-                <h1>Time Clock Report</h1>
-                <p><strong>Employee:</strong> ${selectedEmployee === 'All Employees' ? 'All Employees' : selectedEmployee}</p>
-                <p><strong>Date Range:</strong> ${formatDateForPrint(startDate)} - ${formatDateForPrint(endDate)}</p>
-                <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
-            </div>
             ${reportHTML}
             <div class="print-footer">
-                <p>Generated by Time Clock System</p>
+                <p>Generated ${new Date().toLocaleString()} · ${selectedEmployee === 'All Employees' ? 'All Employees' : escapeHtml(selectedEmployee)}</p>
             </div>
         </body>
         </html>

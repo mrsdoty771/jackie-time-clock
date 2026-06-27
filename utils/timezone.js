@@ -197,6 +197,28 @@ function localDateTimeInTzToUtc(localDateStr, timeStr, timezone) {
 /**
  * Parse punch time from API/client: ISO UTC (with Z/offset) or legacy local YYYY-MM-DDTHH:mm(:ss).
  */
+/**
+ * List every calendar day (YYYY-MM-DD) from start through end in a timezone.
+ */
+function enumerateLocalDatesInRange(startDateStr, endDateStr, timezone) {
+  const tz = timezone && String(timezone).trim() ? timezone : DEFAULT_TZ;
+  const start = String(startDateStr || '').trim().slice(0, 10);
+  const end = String(endDateStr || '').trim().slice(0, 10);
+  if (!start || !end || start > end) return [];
+  const dates = [];
+  let cur = start;
+  const maxDays = 400;
+  for (let i = 0; i < maxDays; i++) {
+    dates.push(cur);
+    if (cur === end) break;
+    const { startUtc } = getUtcRangeForLocalDate(cur, tz);
+    const nextProbe = new Date(startUtc.getTime() + 36 * 60 * 60 * 1000);
+    cur = getLocalDateStringInTz(nextProbe, tz);
+    if (cur <= start) break;
+  }
+  return dates;
+}
+
 async function parsePunchTimeInput(punchTimeRaw, companyId) {
   const raw = String(punchTimeRaw ?? '').trim();
   if (!raw) return null;
@@ -223,6 +245,7 @@ module.exports = {
   utcToLocalDateAndTimeParts,
   localDateTimeInTzToUtc,
   parsePunchTimeInput,
+  enumerateLocalDatesInRange,
   isValidIanaTimezone,
   DEFAULT_TZ,
 };

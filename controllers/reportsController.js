@@ -10,6 +10,7 @@ const {
   getLocalDateStringInTz,
   formatDateTimeInTz,
   formatLocalDateInTz,
+  enumerateLocalDatesInRange,
 } = require('../utils/timezone');
 const { calculateDayWorkHours } = require('../utils/workHours');
 
@@ -64,7 +65,14 @@ async function getReportData(companyId, user, startDateStr, endDateStr, employee
     });
   });
 
+  const allDatesInRange = enumerateLocalDatesInRange(startDateStr, endDateStr, tz);
   Object.values(employeeMap).forEach((emp) => {
+    allDatesInRange.forEach((dateStr) => {
+      if (!emp.days[dateStr]) {
+        emp.days[dateStr] = { date: dateStr, punches: [], hours: 0 };
+      }
+    });
+    emp.total_hours = 0;
     Object.values(emp.days).forEach((day) => {
       let clockIn = null;
       let clockOut = null;
@@ -92,37 +100,103 @@ async function getReportData(companyId, user, startDateStr, endDateStr, employee
   return Object.values(employeeMap);
 }
 
+function formatShortDateStr(dateStr) {
+  const s = String(dateStr || '').trim().slice(0, 10);
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  return `${Number(m)}/${Number(d)}/${y}`;
+}
+
+function formatTimeOnlyInTz(time, tz) {
+  const d = new Date(time);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', {
+    timeZone: tz || 'UTC',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function formatHoursAsHMM(hours) {
+  const h = Number(hours) || 0;
+  let wholeHours = Math.floor(h);
+  let minutes = Math.round((h - wholeHours) * 60);
+  if (minutes === 60) {
+    wholeHours += 1;
+    minutes = 0;
+  }
+  return `${wholeHours}:${String(minutes).padStart(2, '0')}`;
+}
+
+function getDayPunchTimeTz(day, type, tz) {
+  const punches = [...(day.punches || [])].sort((a, b) => new Date(a.time) - new Date(b.time));
+  const match = punches.find((p) => p.type === type);
+  return match ? formatTimeOnlyInTz(match.time, tz) : '';
+}
+
 /** Build PDF buffer from report data. timezone used for formatting punch times. */
 function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, timezone) {
   const tz = timezone || 'UTC';
+  const colX = [50, 105, 148, 191, 234, 277, 328];
+  const colW = [52, 40, 40, 40, 40, 48, 217];
+
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', reject);
 
-    doc.fontSize(18).text('Time Clock Report', { align: 'center' });
-    doc.moveDown(0.5);
-    doc.fontSize(11).text(`Employee: ${employeeLabel}`, { align: 'center' });
-    doc.text(`Date Range: ${startDateStr} - ${endDateStr}`, { align: 'center' });
-    doc.text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
-    doc.moveDown(1);
+    doc.fontSize(18).text('Time Sheet', 50, 50);
+    doc.fontSize(10).text(`Start Date  ${formatShortDateStr(startDateStr)}`, 350, 55, { align: 'right', width: 200 });
+    doc.text(`End Date  ${formatShortDateStr(endDateStr)}`, 350, 68, { align: 'right', width: 200 });
+    doc.y = 100;
 
     reportData.forEach((emp) => {
-      doc.fontSize(14).text(`${emp.employee_name} (${emp.employee_number || ''})`);
-      doc.fontSize(11).text(`Total Hours: ${emp.total_hours}`);
-      doc.moveDown(0.5);
-      const dayList = Object.values(emp.days).sort((a, b) => a.date.localeCompare(b.date));
-      dayList.forEach((day) => {
-        doc.fontSize(10).text(`${formatLocalDateInTz(day.date, tz)} - ${day.hours} hours`);
-        day.punches.sort((a, b) => new Date(a.time) - new Date(b.time));
-        day.punches.forEach((p) => {
-          doc.fontSize(9).text(`  ${formatPunchType(p.type)}: ${formatDateTimeInTz(p.time, tz)}${p.notes ? ` (${p.notes})` : ''}`, { indent: 15 });
-        });
-        doc.moveDown(0.3);
+      if (doc.y > 680) doc.addPage();
+      doc.fontSize(12).fillColor('#000').text(emp.employee_name, 50, doc.y);
+      doc.moveDown(0.4);
+
+      const headers = ['Work Date', 'Time In', 'Lunch Out', 'Lunch In', 'Time Out', 'Total Hours'];
+      doc.fontSize(8).fillColor('#000');
+      const headerY = doc.y;
+      headers.forEach((h, i) => {
+        doc.text(h, colX[i], headerY, { width: colW[i], align: i === 5 ? 'right' : 'left' });
       });
-      doc.moveDown(0.5);
+      doc.moveDown(0.6);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#ccc');
+      doc.moveDown(0.3);
+
+      const dayList = Object.values(emp.days)
+        .filter((day) => day.punches && day.punches.length > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      dayList.forEach((day) => {
+        if (doc.y > 700) doc.addPage();
+        const rowY = doc.y;
+        const cells = [
+          formatShortDateStr(day.date),
+          getDayPunchTimeTz(day, 'clock_in', tz),
+          getDayPunchTimeTz(day, 'lunch_out', tz),
+          getDayPunchTimeTz(day, 'lunch_in', tz),
+          getDayPunchTimeTz(day, 'clock_out', tz),
+          formatHoursAsHMM(day.hours),
+        ];
+        cells.forEach((text, i) => {
+          doc.fontSize(9).fillColor('#000').text(text, colX[i], rowY, { width: colW[i], align: i === 5 ? 'right' : 'left' });
+        });
+        const notes = (day.punches || []).filter((p) => p.notes).map((p) => p.notes).join('; ');
+        if (notes) {
+          doc.fontSize(8).fillColor('#444').text(notes, colX[6], rowY, { width: colW[6] });
+        }
+        doc.moveDown(0.9);
+      });
+
+      doc.moveDown(0.2);
+      doc.fontSize(11).fillColor('#cc0000').text(formatHoursAsHMM(emp.total_hours), colX[5], doc.y, { width: colW[5], align: 'right' });
+      doc.fillColor('#000');
+      doc.moveDown(1.2);
     });
 
     doc.end();

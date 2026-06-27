@@ -186,6 +186,16 @@ app.listen(PORT, '0.0.0.0', () => {
     })
     .catch(err => {
       console.error('MongoDB connection error:', err);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('');
+        console.error('--- Local dev: login will NOT work until MongoDB connects ---');
+        console.error('1. Open DigitalOcean → Databases → your MongoDB cluster');
+        console.error('2. Settings → Trusted Sources → Add your public IP (google "what is my ip")');
+        console.error('3. Save, wait ~1 minute, stop the server (Ctrl+C) and run npm start again');
+        console.error('4. Look for "Connected to MongoDB" in this terminal before logging in');
+        console.error('---');
+        console.error('');
+      }
       // #region agent log
       fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'server.js:db-connect',message:'mongoose connect failed',data:{errName:err?.name,errMsg:String(err?.message||err).slice(0,200)},timestamp:Date.now(),hypothesisId:'B,E'})}).catch(()=>{});
       // #endregion

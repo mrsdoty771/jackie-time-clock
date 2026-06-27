@@ -190,10 +190,12 @@ async function login(req, res) {
     // #region agent log
     fetch('http://127.0.0.1:7485/ingest/ffcfd3e8-df26-4f65-aca1-565e0ff3ca4e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d9170a'},body:JSON.stringify({sessionId:'d9170a',location:'authController.js:login',message:'login error caught',data:{errName:err?.name,errMsg:msg.slice(0,300),readyState:mongoose.connection.readyState,isDbUnavailableMsg:msg.includes('buffering timed out')||msg.includes('Authentication failed')},timestamp:Date.now(),hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
     // #endregion
-    if (msg.includes('buffering timed out') || msg.includes('Authentication failed')) {
-      return res.status(503).json({
-        error: 'Database unavailable. Please check that DATABASE_URL is set correctly in your deployment.',
-      });
+    if (msg.includes('buffering timed out') || msg.includes('Server selection timed out') || msg.includes('Authentication failed')) {
+      const isLocal = process.env.NODE_ENV !== 'production';
+      const error = isLocal
+        ? 'Cannot reach the database from this computer. In DigitalOcean → Databases → your cluster → Settings → Trusted Sources, add your current public IP (search "what is my ip"), save, wait 1 minute, then restart npm start. The terminal must show "Connected to MongoDB" before login will work.'
+        : 'Database unavailable. Check DATABASE_URL and database network access in your deployment.';
+      return res.status(503).json({ error });
     }
     return res.status(500).json({
       error: 'Server error. Check the server logs for details.',

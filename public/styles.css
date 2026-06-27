@@ -671,6 +671,146 @@ body {
     font-weight: bold;
 }
 
+/* --- Reports (Time Sheet) --- */
+#report-results {
+    margin-top: 24px;
+}
+
+.timesheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #333;
+}
+
+.timesheet-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: bold;
+    color: #000;
+}
+
+.timesheet-dates {
+    font-size: 14px;
+    color: #333;
+}
+
+.timesheet-dates span {
+    margin-left: 16px;
+}
+
+.timesheet-dates span:first-child {
+    margin-left: 0;
+}
+
+.timesheet-employee {
+    margin-bottom: 28px;
+}
+
+.timesheet-employee-name {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #000;
+}
+
+.timesheet-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    table-layout: fixed;
+}
+
+.timesheet-table col.col-date { width: 74px; }
+.timesheet-table col.col-time { width: 58px; }
+.timesheet-table col.col-hours { width: 44px; }
+
+.timesheet-table th,
+.timesheet-table td {
+    border: 1px solid #bbb;
+    padding: 5px 6px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.timesheet-table th:nth-child(2),
+.timesheet-table th:nth-child(3),
+.timesheet-table th:nth-child(4),
+.timesheet-table th:nth-child(5),
+.timesheet-table td:nth-child(2),
+.timesheet-table td:nth-child(3),
+.timesheet-table td:nth-child(4),
+.timesheet-table td:nth-child(5) {
+    padding: 5px 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.timesheet-table th:nth-child(6),
+.timesheet-table td.timesheet-hours {
+    padding: 5px 4px;
+    white-space: nowrap;
+}
+
+.timesheet-table th {
+    background: #f0f0f0;
+    font-weight: bold;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.timesheet-hours {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.timesheet-grand-total {
+    color: #c00;
+    font-weight: bold;
+    text-align: right;
+    font-size: 14px;
+    border-top: 2px solid #999 !important;
+}
+
+.timesheet-notes {
+    font-size: 12px;
+    color: #555;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.35;
+}
+
+.timesheet-empty {
+    text-align: center;
+    color: #888;
+    font-style: italic;
+}
+
+@media (max-width: 700px) {
+    .timesheet-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .timesheet-dates span {
+        display: block;
+        margin-left: 0;
+        margin-top: 4px;
+    }
+    .timesheet-table {
+        font-size: 11px;
+    }
+    .timesheet-table th,
+    .timesheet-table td {
+        padding: 4px 6px;
+    }
+}
+
 /* --- Responsive Layout --- */
 @media (max-width: 600px) {
     .punch-buttons {
