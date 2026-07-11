@@ -18,6 +18,8 @@ let companyPayWeekEndDay = 0;
 let myClockAdminEmployeeId = null;
 /** Employee-page time-history filter state. */
 let employeeHistoryRangeMode = 'this_week';
+/** Manager Reports date-range filter state. */
+let reportRangeMode = 'this_week';
 
 // Intercept API 403 PASSWORD_RESET_REQUIRED so the app can show forced password change UI
 const _originalFetch = window.fetch;
@@ -165,6 +167,38 @@ function initializeWeekStart() {
     const re = document.getElementById('report-end-date');
     if (rs) rs.value = startDate;
     if (re) re.value = endDate;
+    updateReportRangeLabel({ startDate, endDate, label: 'This Week' });
+}
+
+function getReportRangeSelection() {
+    if (reportRangeMode === 'last_week') {
+        const range = getPayWeekLocalDateRangeInTz(-1);
+        return { ...range, label: 'Last Week' };
+    }
+
+    if (reportRangeMode === 'custom') {
+        const startDate = document.getElementById('report-start-date')?.value || '';
+        const endDate = document.getElementById('report-end-date')?.value || '';
+        if (!startDate || !endDate || startDate > endDate) return null;
+        return { startDate, endDate, label: 'Custom Dates' };
+    }
+
+    const range = getPayWeekLocalDateRangeInTz(0);
+    return { ...range, label: 'This Week' };
+}
+
+function updateReportRangeLabel(range) {
+    const labelEl = document.getElementById('report-range-current');
+    if (!labelEl || !range) return;
+    labelEl.textContent = `Showing: ${range.label} (${range.startDate} to ${range.endDate})`;
+}
+
+function applyReportRangeToInputs(range) {
+    if (!range) return;
+    const rs = document.getElementById('report-start-date');
+    const re = document.getElementById('report-end-date');
+    if (rs) rs.value = range.startDate;
+    if (re) re.value = range.endDate;
 }
 
 function syncPayWeekEndFromStart() {
@@ -559,7 +593,6 @@ function setupEventListeners() {
         openEmployeeProfileModal();
     });
     document.getElementById('employee-profile-form')?.addEventListener('submit', handleEmployeeProfileSubmit);
-    document.getElementById('cancel-employee-profile-btn')?.addEventListener('click', closeEmployeeProfileModal);
     document.querySelector('.close-employee-profile')?.addEventListener('click', closeEmployeeProfileModal);
     document.getElementById('employee-profile-new-password-toggle')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -735,6 +768,21 @@ function setupEventListeners() {
 
     // Reports
     document.getElementById('generate-report-btn')?.addEventListener('click', generateReport);
+    document.getElementById('report-range')?.addEventListener('change', (e) => {
+        const mode = e.target?.value || 'this_week';
+        reportRangeMode = mode;
+        const customWrap = document.getElementById('report-custom-dates');
+        if (customWrap) customWrap.classList.toggle('hidden', mode !== 'custom');
+        if (mode === 'custom') {
+            const current = getPayWeekLocalDateRangeInTz(0);
+            const rs = document.getElementById('report-start-date');
+            const re = document.getElementById('report-end-date');
+            if (rs && !rs.value) rs.value = current.startDate;
+            if (re && !re.value) re.value = current.endDate;
+        }
+        const preview = getReportRangeSelection();
+        if (preview) updateReportRangeLabel(preview);
+    });
     document.getElementById('print-report-btn')?.addEventListener('click', printReport);
     document.getElementById('email-report-btn')?.addEventListener('click', emailReport);
     
@@ -1328,89 +1376,177 @@ function getEndOfLocalDayInstant(localDateStr, timezone) {
     return last;
 }
 
-function displayEmployeeRecords(records) {
-    const container = document.getElementById('employee-records');
-    if (records.length === 0) {
-        container.innerHTML = '<p>No records found.</p>';
-        return;
+function getEmployeePageDisplayName() {
+    const employeeNameEl = document.getElementById('employee-name');
+    if (employeeNameEl?.textContent) {
+        return employeeNameEl.textContent.replace(/^Hello,\s*/i, '').trim() || 'Employee';
     }
-    
-    // Group records by day (in company timezone)
+    return currentUser?.employee_name || 'Employee';
+}
+
+/** Build manager-style timesheet data from raw punch records. */
+function buildEmployeeTimesheetDataFromPunches(records, employeeName) {
     const recordsByDay = {};
-    records.slice(0, 100).forEach(record => {
+    (records || []).slice(0, 100).forEach((record) => {
         const dateStr = getLocalDateStringInTz(record.punch_time, companyTimezone);
-        if (!recordsByDay[dateStr]) {
-            recordsByDay[dateStr] = [];
-        }
+        if (!recordsByDay[dateStr]) recordsByDay[dateStr] = [];
         recordsByDay[dateStr].push(record);
     });
-    
-    // Sort days (most recent first)
-    const sortedDays = Object.keys(recordsByDay).sort((a, b) => new Date(b) - new Date(a));
+
     const todayStr = getLocalDateStringInTz(new Date(), companyTimezone);
     const now = new Date();
-    
-    // Generate HTML for each day and sum period total
-    let periodTotalHours = 0;
-    const daysHtml = sortedDays.map(dateStr => {
-        const dayRecords = recordsByDay[dateStr].sort((a, b) => 
-            new Date(a.punch_time) - new Date(b.punch_time)
+    const days = {};
+    let totalHours = 0;
+
+    Object.keys(recordsByDay).forEach((dateStr) => {
+        const dayRecords = recordsByDay[dateStr].sort(
+            (a, b) => new Date(a.punch_time) - new Date(b.punch_time)
         );
-        
-        // Calculate total hours for the day
+
         let clockIn = null;
         let clockOut = null;
         let lunchIn = null;
         let lunchOut = null;
-        
-        dayRecords.forEach(record => {
+        const punches = dayRecords.map((record) => {
             const punchTime = new Date(record.punch_time);
             if (record.punch_type === 'clock_in') clockIn = punchTime;
             if (record.punch_type === 'clock_out') clockOut = punchTime;
-            // Note: lunch_in means returning from lunch, lunch_out means going to lunch
-            if (record.punch_type === 'lunch_in') lunchIn = punchTime; // Return from lunch
-            if (record.punch_type === 'lunch_out') lunchOut = punchTime; // Go to lunch
+            if (record.punch_type === 'lunch_in') lunchIn = punchTime;
+            if (record.punch_type === 'lunch_out') lunchOut = punchTime;
+            return {
+                type: record.punch_type,
+                time: record.punch_time,
+                notes: record.notes || null,
+            };
         });
-        
-        const asOf = dateStr === todayStr ? now : getEndOfLocalDayInstant(dateStr, companyTimezone);
-        const totalHours = calculateDayWorkHours(clockIn, clockOut, lunchIn, lunchOut, asOf);
-        periodTotalHours += totalHours;
-        
-        const displayDate = formatDate(dateStr);
-        const punchesHtml = dayRecords.map(record => {
-            const date = new Date(record.punch_time);
-            const typeClass = record.punch_type.replace('_', '-');
-            const hasNotes = record.notes && record.notes.trim().length > 0;
-            return `
-                <div class="record-item" style="margin-bottom: 8px;">
-                    <div>
-                        <span class="record-type ${typeClass}">${formatPunchType(record.punch_type)}</span>
-                        <span style="margin-left: 15px;">${formatDateTime(date)}</span>
-                        ${hasNotes ? `<div style="margin-top: 5px; padding: 8px; background: #f8f9fa; border-left: 3px solid #667eea; font-size: 13px; color: #555;"><strong>Note:</strong> ${record.notes.replace(/\n/g, '<br>')}</div>` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        return `
-            <div style="margin-bottom: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <h4 style="margin: 0; color: #333; font-size: 18px;">${displayDate}</h4>
-                    <div style="font-weight: bold; font-size: 16px; color: #667eea;">Total Hours: ${totalHours.toFixed(2)}</div>
-                </div>
-                <div>${punchesHtml}</div>
-            </div>
-        `;
-    }).join('');
 
-    const periodTotalHtml = `
-        <div style="margin-top: 5px; margin-bottom: 10px; padding: 15px; background: #667eea; border-radius: 8px; color: #fff; display: flex; justify-content: space-between; align-items: center;">
-            <strong style="font-size: 18px;">Period Total</strong>
-            <strong style="font-size: 20px;">${periodTotalHours.toFixed(2)} hrs</strong>
+        const asOf = dateStr === todayStr ? now : getEndOfLocalDayInstant(dateStr, companyTimezone);
+        const hours = calculateDayWorkHours(clockIn, clockOut, lunchIn, lunchOut, asOf);
+        totalHours += hours;
+        days[dateStr] = { date: dateStr, punches, hours };
+    });
+
+    return {
+        employee_name: employeeName || 'Employee',
+        days,
+        total_hours: totalHours,
+    };
+}
+
+function displayEmployeeRecords(records) {
+    const container = document.getElementById('employee-records');
+    if (!records || records.length === 0) {
+        container.innerHTML = '<p>No records found.</p>';
+        return;
+    }
+
+    const range = getEmployeeHistoryRangeSelection();
+    const startDate = range?.startDate || '';
+    const endDate = range?.endDate || '';
+    const emp = buildEmployeeTimesheetDataFromPunches(records, getEmployeePageDisplayName());
+
+    container.innerHTML = `
+        <div class="timesheet-header">
+            <h2 class="timesheet-title">Time Sheet</h2>
+            <div class="timesheet-dates">
+                <span><strong>Start Date</strong> ${formatShortDate(startDate)}</span>
+                <span><strong>End Date</strong> ${formatShortDate(endDate)}</span>
+            </div>
         </div>
+        ${buildEmployeeTimesheet(emp)}
     `;
-    
-    container.innerHTML = daysHtml + periodTotalHtml;
+}
+
+function getEmployeeTimesheetPrintStyles() {
+    return `
+        @media print {
+            @page { margin: 1cm; }
+            body { margin: 0; padding: 12px; }
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 0;
+            padding: 16px;
+            color: #000;
+            font-size: 13px;
+        }
+        .timesheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+        }
+        .timesheet-title {
+            margin: 0;
+            font-size: 22px;
+            font-weight: bold;
+        }
+        .timesheet-dates span { margin-left: 20px; }
+        .timesheet-employee { margin-bottom: 24px; page-break-inside: avoid; }
+        .timesheet-employee-name {
+            margin: 0 0 6px;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        .timesheet-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            table-layout: fixed;
+        }
+        .timesheet-table col.col-date { width: 74px; }
+        .timesheet-table col.col-time { width: 58px; }
+        .timesheet-table col.col-hours { width: 44px; }
+        .timesheet-table th,
+        .timesheet-table td {
+            border: 1px solid #ccc;
+            padding: 4px 5px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .timesheet-table th:nth-child(2),
+        .timesheet-table th:nth-child(3),
+        .timesheet-table th:nth-child(4),
+        .timesheet-table th:nth-child(5),
+        .timesheet-table td:nth-child(2),
+        .timesheet-table td:nth-child(3),
+        .timesheet-table td:nth-child(4),
+        .timesheet-table td:nth-child(5) {
+            padding: 4px 2px;
+            font-size: 11px;
+            white-space: nowrap;
+            text-align: center;
+        }
+        .timesheet-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+            font-size: 10px;
+        }
+        .timesheet-hours { text-align: right; white-space: nowrap; }
+        .timesheet-grand-total {
+            color: #c00;
+            font-weight: bold;
+            text-align: right;
+            font-size: 14px;
+        }
+        .timesheet-notes {
+            font-size: 11px;
+            color: #444;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+        }
+        .timesheet-empty { text-align: center; color: #666; font-style: italic; }
+        .print-footer {
+            margin-top: 20px;
+            padding-top: 8px;
+            border-top: 1px solid #ccc;
+            text-align: center;
+            color: #666;
+            font-size: 11px;
+        }
+    `;
 }
 
 function printEmployeeRecords() {
@@ -1423,19 +1559,7 @@ function printEmployeeRecords() {
         return;
     }
 
-    const employeeNameEl = document.getElementById('employee-name');
-    let employeeName = 'Employee';
-    if (employeeNameEl?.textContent) {
-        employeeName = employeeNameEl.textContent.replace(/^Hello,\s*/i, '').trim() || 'Employee';
-    } else if (currentUser?.employee_name) {
-        employeeName = currentUser.employee_name;
-    }
-
-    const companyTitle = document.getElementById('employee-page-title')?.textContent?.trim() || 'Time Clock';
-    const companyName = companyTitle.replace(/\s+Time Clock\s*$/i, '').trim() || companyTitle;
-    const dateRangeLabel = document.getElementById('employee-history-current')?.textContent?.trim()
-        || 'Recent Time Records';
-
+    const employeeName = getEmployeePageDisplayName();
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
         showMessage('Pop-up blocked. Please allow pop-ups to print your time records.', 'error');
@@ -1446,63 +1570,13 @@ function printEmployeeRecords() {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Time Records - ${employeeName}</title>
-            <style>
-                @media print {
-                    @page { margin: 1cm; }
-                    body { margin: 0; padding: 20px; }
-                }
-                body {
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    margin: 0;
-                    padding: 20px;
-                    color: #333;
-                }
-                .report-header {
-                    text-align: center;
-                    margin-bottom: 30px;
-                    border-bottom: 2px solid #667eea;
-                    padding-bottom: 15px;
-                }
-                .report-header h1 {
-                    margin: 0;
-                    color: #667eea;
-                    font-size: 24px;
-                }
-                .report-header p {
-                    margin: 5px 0;
-                    color: #666;
-                }
-                .records-body {
-                    margin-top: 10px;
-                }
-                .record-type {
-                    display: inline-block;
-                    font-weight: 600;
-                    color: #667eea;
-                }
-                .print-footer {
-                    margin-top: 30px;
-                    padding-top: 15px;
-                    border-top: 1px solid #ddd;
-                    text-align: center;
-                    color: #666;
-                    font-size: 12px;
-                }
-            </style>
+            <title>Time Sheet - ${escapeHtml(employeeName)}</title>
+            <style>${getEmployeeTimesheetPrintStyles()}</style>
         </head>
         <body>
-            <div class="report-header">
-                <h1>${companyName} Time Clock</h1>
-                <p><strong>Employee:</strong> ${employeeName}</p>
-                <p><strong>${dateRangeLabel}</strong></p>
-                <p><strong>Printed:</strong> ${new Date().toLocaleString()}</p>
-            </div>
-            <div class="records-body">
-                ${recordsHtml}
-            </div>
+            ${recordsHtml}
             <div class="print-footer">
-                <p>Generated by Time Clock System</p>
+                <p>Generated ${new Date().toLocaleString()} · ${escapeHtml(employeeName)}</p>
             </div>
         </body>
         </html>
@@ -2867,18 +2941,18 @@ function handleManualPunch(e) {
 
 function generateReport() {
     const employeeId = document.getElementById('report-employee').value;
-    const startDate = document.getElementById('report-start-date').value;
-    const endDate = document.getElementById('report-end-date').value;
-    
-    if (!startDate || !endDate) {
-        showMessage('Please select both starting date and end date', 'error');
+    const range = getReportRangeSelection();
+
+    if (!range) {
+        showMessage('Please select a valid custom date range.', 'error');
         return;
     }
-    
-    if (new Date(startDate) > new Date(endDate)) {
-        showMessage('Starting date must be before or equal to end date', 'error');
-        return;
-    }
+
+    applyReportRangeToInputs(range);
+    updateReportRangeLabel(range);
+
+    const startDate = range.startDate;
+    const endDate = range.endDate;
     
     let url = `${API_BASE}/reports/weekly?start_date=${startDate}&end_date=${endDate}`;
     if (employeeId) {

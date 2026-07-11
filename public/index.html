@@ -79,13 +79,11 @@
     </div>
 
     <div id="employee-page" class="page hidden">
-        <nav class="navbar">
-            <h2 id="employee-page-title">MVC Time Clock</h2>
-            <div class="navbar-user-actions">
-                <div class="employee-greeting-block">
-                    <span id="employee-name" class="employee-greeting-name"></span>
-                    <a href="#" id="employee-profile-link" class="employee-profile-link">Profile</a>
-                </div>
+        <nav class="navbar navbar-employee">
+            <h2 id="employee-page-title" class="navbar-left">MVC Time Clock</h2>
+            <span id="employee-name" class="employee-greeting-name navbar-center"></span>
+            <div class="navbar-right navbar-user-actions">
+                <button type="button" id="employee-profile-link" class="btn btn-secondary btn-profile">Profile</button>
                 <button id="logout-btn" class="btn btn-logout">Logout</button>
             </div>
         </nav>
@@ -286,13 +284,24 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="report-start-date">Starting Date</label>
-                    <input type="date" id="report-start-date" required>
+                    <label for="report-range">Date Range</label>
+                    <select id="report-range">
+                        <option value="this_week" selected>This Week</option>
+                        <option value="last_week">Last Week</option>
+                        <option value="custom">Custom Dates</option>
+                    </select>
                 </div>
-                <div class="form-group">
-                    <label for="report-end-date">End Date</label>
-                    <input type="date" id="report-end-date" required>
+                <div id="report-custom-dates" class="hidden">
+                    <div class="form-group">
+                        <label for="report-start-date">Start Date</label>
+                        <input type="date" id="report-start-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="report-end-date">End Date</label>
+                        <input type="date" id="report-end-date">
+                    </div>
                 </div>
+                <p id="report-range-current" style="margin: 0 0 12px 0; color: #666; font-size: 13px;">Showing: This Week</p>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
                     <button type="button" id="generate-report-btn" class="btn btn-primary">Generate Report</button>
                     <button type="button" id="print-report-btn" class="btn btn-secondary" style="display: none;">Print Report</button>
@@ -528,7 +537,7 @@
         <div class="modal-content employee-profile-modal-content">
             <span class="close-employee-profile">&times;</span>
             <h3>My Profile</h3>
-            <p style="color: #666; font-size: 14px; margin-bottom: 20px; text-align: left;">Update your phone number and password.</p>
+            <p>Update your phone number and password.</p>
             <form id="employee-profile-form" class="form">
                 <div class="form-group">
                     <label for="employee-profile-phone">Phone</label>
@@ -555,9 +564,8 @@
                         </button>
                     </div>
                 </div>
-                <div id="employee-profile-message" style="margin-bottom: 12px; font-size: 14px;"></div>
+                <div id="employee-profile-message" style="margin-bottom: 12px;"></div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" id="cancel-employee-profile-btn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
