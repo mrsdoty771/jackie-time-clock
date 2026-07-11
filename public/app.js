@@ -1350,7 +1350,8 @@ function displayEmployeeRecords(records) {
     const todayStr = getLocalDateStringInTz(new Date(), companyTimezone);
     const now = new Date();
     
-    // Generate HTML for each day
+    // Generate HTML for each day and sum period total
+    let periodTotalHours = 0;
     const daysHtml = sortedDays.map(dateStr => {
         const dayRecords = recordsByDay[dateStr].sort((a, b) => 
             new Date(a.punch_time) - new Date(b.punch_time)
@@ -1373,6 +1374,7 @@ function displayEmployeeRecords(records) {
         
         const asOf = dateStr === todayStr ? now : getEndOfLocalDayInstant(dateStr, companyTimezone);
         const totalHours = calculateDayWorkHours(clockIn, clockOut, lunchIn, lunchOut, asOf);
+        periodTotalHours += totalHours;
         
         const displayDate = formatDate(dateStr);
         const punchesHtml = dayRecords.map(record => {
@@ -1400,8 +1402,15 @@ function displayEmployeeRecords(records) {
             </div>
         `;
     }).join('');
+
+    const periodTotalHtml = `
+        <div style="margin-top: 5px; margin-bottom: 10px; padding: 15px; background: #667eea; border-radius: 8px; color: #fff; display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 18px;">Period Total</strong>
+            <strong style="font-size: 20px;">${periodTotalHours.toFixed(2)} hrs</strong>
+        </div>
+    `;
     
-    container.innerHTML = daysHtml;
+    container.innerHTML = daysHtml + periodTotalHtml;
 }
 
 function printEmployeeRecords() {
