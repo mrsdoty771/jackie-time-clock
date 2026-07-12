@@ -446,6 +446,102 @@ body {
     display: block;
 }
 
+/* --- Scroll time picker (Manual Punch) --- */
+.scroll-time-picker {
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+    max-width: 340px;
+}
+
+.scroll-time-display {
+    text-align: center;
+    padding: 10px 12px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    letter-spacing: 0.02em;
+}
+
+.scroll-time-wheels {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    height: 168px;
+    background: linear-gradient(#fafafa, #fff 35%, #fff 65%, #fafafa);
+}
+
+.scroll-time-highlight {
+    pointer-events: none;
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 50%;
+    height: 42px;
+    margin-top: -21px;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    background: rgba(102, 126, 234, 0.06);
+    border-radius: 6px;
+    z-index: 1;
+}
+
+.scroll-time-col {
+    position: relative;
+    z-index: 2;
+    width: 72px;
+    height: 100%;
+    overflow-y: auto;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.scroll-time-col::-webkit-scrollbar {
+    display: none;
+}
+
+.scroll-time-colon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #333;
+    z-index: 2;
+}
+
+.scroll-time-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    scroll-snap-align: center;
+    border: none;
+    background: transparent;
+    width: 100%;
+    font-size: 20px;
+    font-weight: 600;
+    color: #bbb;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+}
+
+.scroll-time-item.is-selected {
+    color: #333;
+}
+
+.scroll-time-spacer {
+    height: 63px;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
 /* --- Buttons --- */
 .btn {
     padding: 12px 24px;
