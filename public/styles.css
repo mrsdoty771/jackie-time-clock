@@ -346,6 +346,16 @@ body {
 .password-input-wrap input {
     padding-right: 44px;
 }
+
+/* Mask secrets without type=password so Chrome does not offer "Update password?" */
+.secret-masked-input {
+    -webkit-text-security: disc;
+    text-security: disc;
+}
+.secret-masked-input.secret-revealed {
+    -webkit-text-security: none;
+    text-security: none;
+}
 .password-toggle-btn {
     position: absolute;
     right: 8px;

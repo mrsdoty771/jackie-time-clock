@@ -912,12 +912,11 @@ function setupEventListeners() {
         const showIcon = btn?.querySelector('.pwd-icon-show');
         const hideIcon = btn?.querySelector('.pwd-icon-hide');
         if (!input || !btn) return;
-        const isPassword = input.type === 'password';
-        input.type = isPassword ? 'text' : 'password';
-        btn.setAttribute('aria-label', isPassword ? 'Hide auth token' : 'Show auth token');
-        btn.setAttribute('title', isPassword ? 'Hide auth token' : 'Show auth token');
-        if (showIcon) showIcon.style.display = isPassword ? 'none' : '';
-        if (hideIcon) hideIcon.style.display = isPassword ? '' : 'none';
+        const revealed = input.classList.toggle('secret-revealed');
+        btn.setAttribute('aria-label', revealed ? 'Hide auth token' : 'Show auth token');
+        btn.setAttribute('title', revealed ? 'Hide auth token' : 'Show auth token');
+        if (showIcon) showIcon.style.display = revealed ? 'none' : '';
+        if (hideIcon) hideIcon.style.display = revealed ? '' : 'none';
     });
 
     setupEditPasswordPlaceholder();
