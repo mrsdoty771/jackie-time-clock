@@ -794,11 +794,7 @@ function setupEventListeners() {
     document.getElementById('my-lunch-in-btn')?.addEventListener('click', () => handleManagerPunch('lunch_out'));
     document.getElementById('my-lunch-out-btn')?.addEventListener('click', () => handleManagerPunch('lunch_in'));
     // Manual punch
-    document.getElementById('manual-punch-form')?.addEventListener('submit', (e) => {
-        syncManualPunchTimeFromPicker();
-        handleManualPunch(e);
-    });
-    initManualPunchScrollTimePicker();
+    document.getElementById('manual-punch-form')?.addEventListener('submit', handleManualPunch);
     setManualPunchDefaultsToCompanyNow();
     bindPunchDateInputsFullClick();
 
@@ -3226,8 +3222,9 @@ function handleManualPunch(e) {
                 if (select && select.options.length) select.selectedIndex = 0;
                 const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
                 const dateEl = document.getElementById('manual-punch-date');
+                const timeEl = document.getElementById('manual-punch-time');
                 if (dateEl && dateStr) dateEl.value = dateStr;
-                setManualPunchScrollTime((timeStr || '').slice(0, 5) || '12:00');
+                if (timeEl && timeStr) timeEl.value = timeStr.slice(0, 5);
             } else {
                 showMessage(data.error || 'Failed to record punch', 'error');
             }
@@ -3715,10 +3712,6 @@ function switchTab(tabName) {
     // Refresh employee list when switching to Manual Punch
     if (tabName === 'punches') {
         loadEmployeesForPunch();
-        // Re-snap picker after tab becomes visible
-        const hidden = document.getElementById('manual-punch-time');
-        if (hidden?.value) setManualPunchScrollTime(hidden.value);
-        else setManualPunchDefaultsToCompanyNow();
     }
 }
 
@@ -4279,200 +4272,11 @@ function getStartOfLocalDayInstant(localDateStr, timezone) {
 }
 
 function setManualPunchDefaultsToCompanyNow() {
-    initManualPunchScrollTimePicker();
     const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
     const manualDateEl = document.getElementById('manual-punch-date');
-    if (manualDateEl && dateStr && !manualDateEl.value) manualDateEl.value = dateStr;
-    const hhmm = (timeStr || '').slice(0, 5);
     const manualTimeEl = document.getElementById('manual-punch-time');
-    if (hhmm && (!manualTimeEl?.value || manualTimeEl.value.length < 4)) {
-        setManualPunchScrollTime(hhmm);
-    } else if (manualTimeEl?.value) {
-        setManualPunchScrollTime(manualTimeEl.value);
-    } else if (hhmm) {
-        setManualPunchScrollTime(hhmm);
-    }
-}
-
-function pad2(n) {
-    return String(n).padStart(2, '0');
-}
-
-function hhmmTo12hParts(hhmm) {
-    const m = String(hhmm || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-    if (!m) return { hour12: 12, minute: 0, ampm: 'AM' };
-    let hour24 = parseInt(m[1], 10);
-    let minute = parseInt(m[2], 10);
-    if (Number.isNaN(hour24) || Number.isNaN(minute)) return { hour12: 12, minute: 0, ampm: 'AM' };
-    minute = Math.min(55, Math.round(minute / 5) * 5);
-    if (minute === 60) {
-        minute = 0;
-        hour24 = (hour24 + 1) % 24;
-    }
-    const ampm = hour24 >= 12 ? 'PM' : 'AM';
-    let hour12 = hour24 % 12;
-    if (hour12 === 0) hour12 = 12;
-    return { hour12, minute, ampm };
-}
-
-function parts12hToHhmm(hour12, minute, ampm) {
-    let h = Number(hour12) || 12;
-    const min = Number(minute) || 0;
-    if (ampm === 'AM') {
-        if (h === 12) h = 0;
-    } else if (h !== 12) {
-        h += 12;
-    }
-    return `${pad2(h)}:${pad2(min)}`;
-}
-
-function format12hDisplay(hour12, minute, ampm) {
-    return `${hour12}:${pad2(minute)} ${ampm}`;
-}
-
-function initManualPunchScrollTimePicker() {
-    const picker = document.getElementById('manual-punch-time-picker');
-    if (!picker || picker.dataset.ready === '1') return;
-    picker.dataset.ready = '1';
-
-    const hourCol = picker.querySelector('.scroll-time-col[data-part="hour"]');
-    const minuteCol = picker.querySelector('.scroll-time-col[data-part="minute"]');
-    if (!hourCol || !minuteCol) return;
-
-    hourCol.innerHTML = '<div class="scroll-time-spacer"></div>';
-    for (let h = 1; h <= 12; h++) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'scroll-time-item';
-        btn.dataset.value = String(h);
-        btn.textContent = String(h);
-        hourCol.appendChild(btn);
-    }
-    hourCol.insertAdjacentHTML('beforeend', '<div class="scroll-time-spacer"></div>');
-
-    minuteCol.innerHTML = '<div class="scroll-time-spacer"></div>';
-    for (let m = 0; m < 60; m += 5) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'scroll-time-item';
-        btn.dataset.value = String(m);
-        btn.textContent = pad2(m);
-        minuteCol.appendChild(btn);
-    }
-    minuteCol.insertAdjacentHTML('beforeend', '<div class="scroll-time-spacer"></div>');
-
-    picker.querySelectorAll('.scroll-time-col').forEach((col) => {
-        let scrollTimer = null;
-        col.addEventListener('scroll', () => {
-            clearTimeout(scrollTimer);
-            scrollTimer = setTimeout(() => {
-                snapScrollTimeCol(col);
-                syncManualPunchTimeFromPicker();
-            }, 80);
-        });
-        col.addEventListener('click', (e) => {
-            const item = e.target.closest('.scroll-time-item');
-            if (!item || !col.contains(item)) return;
-            item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            setTimeout(() => {
-                snapScrollTimeCol(col);
-                syncManualPunchTimeFromPicker();
-            }, 180);
-        });
-    });
-}
-
-function snapScrollTimeCol(col) {
-    const items = [...col.querySelectorAll('.scroll-time-item')];
-    if (!items.length) return;
-    const colRect = col.getBoundingClientRect();
-    const mid = colRect.top + colRect.height / 2;
-    let best = items[0];
-    let bestDist = Infinity;
-    items.forEach((item) => {
-        const r = item.getBoundingClientRect();
-        const itemMid = r.top + r.height / 2;
-        const dist = Math.abs(itemMid - mid);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = item;
-        }
-    });
-    items.forEach((item) => item.classList.toggle('is-selected', item === best));
-    const targetTop = best.offsetTop - (col.clientHeight / 2 - best.clientHeight / 2);
-    col.scrollTop = targetTop;
-}
-
-function getSelectedScrollTimeValue(col) {
-    const selected = col?.querySelector('.scroll-time-item.is-selected');
-    if (selected) return selected.dataset.value;
-    const items = [...(col?.querySelectorAll('.scroll-time-item') || [])];
-    if (!items.length) return null;
-    const colRect = col.getBoundingClientRect();
-    const mid = colRect.top + colRect.height / 2;
-    let best = items[0];
-    let bestDist = Infinity;
-    items.forEach((item) => {
-        const r = item.getBoundingClientRect();
-        const dist = Math.abs(r.top + r.height / 2 - mid);
-        if (dist < bestDist) {
-            bestDist = dist;
-            best = item;
-        }
-    });
-    return best?.dataset.value ?? null;
-}
-
-function syncManualPunchTimeFromPicker() {
-    const picker = document.getElementById('manual-punch-time-picker');
-    const hidden = document.getElementById('manual-punch-time');
-    const display = document.getElementById('manual-punch-time-display');
-    if (!picker || !hidden) return;
-
-    picker.querySelectorAll('.scroll-time-col').forEach((col) => snapScrollTimeCol(col));
-
-    const hourCol = picker.querySelector('.scroll-time-col[data-part="hour"]');
-    const minuteCol = picker.querySelector('.scroll-time-col[data-part="minute"]');
-    const ampmCol = picker.querySelector('.scroll-time-col[data-part="ampm"]');
-    const hour12 = parseInt(getSelectedScrollTimeValue(hourCol) || '12', 10);
-    const minute = parseInt(getSelectedScrollTimeValue(minuteCol) || '0', 10);
-    const ampm = getSelectedScrollTimeValue(ampmCol) || 'AM';
-    hidden.value = parts12hToHhmm(hour12, minute, ampm);
-    if (display) display.textContent = format12hDisplay(hour12, minute, ampm);
-}
-
-function scrollTimeColToValue(col, value) {
-    if (!col) return;
-    const item = [...col.querySelectorAll('.scroll-time-item')].find(
-        (el) => String(el.dataset.value) === String(value)
-    );
-    if (!item) return;
-    const targetTop = item.offsetTop - (col.clientHeight / 2 - item.clientHeight / 2);
-    col.scrollTop = targetTop;
-    col.querySelectorAll('.scroll-time-item').forEach((el) => {
-        el.classList.toggle('is-selected', el === item);
-    });
-}
-
-function setManualPunchScrollTime(hhmm) {
-    initManualPunchScrollTimePicker();
-    const picker = document.getElementById('manual-punch-time-picker');
-    const hidden = document.getElementById('manual-punch-time');
-    const display = document.getElementById('manual-punch-time-display');
-    if (!picker) return;
-    const parts = hhmmTo12hParts(hhmm);
-    if (hidden) hidden.value = parts12hToHhmm(parts.hour12, parts.minute, parts.ampm);
-    if (display) display.textContent = format12hDisplay(parts.hour12, parts.minute, parts.ampm);
-
-    const hourCol = picker.querySelector('.scroll-time-col[data-part="hour"]');
-    const minuteCol = picker.querySelector('.scroll-time-col[data-part="minute"]');
-    const ampmCol = picker.querySelector('.scroll-time-col[data-part="ampm"]');
-    requestAnimationFrame(() => {
-        scrollTimeColToValue(hourCol, parts.hour12);
-        scrollTimeColToValue(minuteCol, parts.minute);
-        scrollTimeColToValue(ampmCol, parts.ampm);
-        syncManualPunchTimeFromPicker();
-    });
+    if (manualDateEl && !manualDateEl.value && dateStr) manualDateEl.value = dateStr;
+    if (manualTimeEl && !manualTimeEl.value && timeStr) manualTimeEl.value = timeStr.slice(0, 5);
 }
 
 /** Find a UTC instant that falls on localDateStr in the given IANA timezone. */
