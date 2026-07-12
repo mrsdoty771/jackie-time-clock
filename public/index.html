@@ -151,7 +151,8 @@
         <nav class="navbar navbar-manager">
             <span id="manager-nav-company" class="navbar-left"></span>
             <h2 class="navbar-center">Manager Dashboard</h2>
-            <div class="navbar-right">
+            <div class="navbar-right navbar-user-actions">
+                <button type="button" id="manager-my-clock-btn" class="btn btn-secondary btn-nav-my-clock" data-tab="my-clock">My Clock</button>
                 <button id="manager-logout-btn" class="btn btn-logout">Logout</button>
             </div>
         </nav>
@@ -159,11 +160,14 @@
         <div class="container">
             <div class="tabs">
                 <button class="tab-btn active" data-tab="punches">Manual Punch</button>
-                <button class="tab-btn" data-tab="edit-punches">Edit Employee Punches</button>
+                <button class="tab-btn" data-tab="edit-punches">Edit Punches</button>
                 <button class="tab-btn" data-tab="reports">Reports</button>
+                <button class="tab-btn" data-tab="pending-corrections" id="pending-corrections-tab-btn">
+                    Pending Corrections
+                    <span id="pending-corrections-badge" class="tab-badge hidden">0</span>
+                </button>
                 <button class="tab-btn" data-tab="employees">Employees</button>
                 <button class="tab-btn" data-tab="my-account">My Account</button>
-                <button class="tab-btn" data-tab="my-clock">My Clock</button>
                 <button class="tab-btn" data-tab="company-settings">Company Settings</button>
             </div>
             
@@ -274,6 +278,15 @@
                 <div id="edit-punches-list" style="margin-top: 20px;"></div>
             </div>
             
+            <!-- Pending Corrections Tab -->
+            <div id="pending-corrections-tab" class="tab-content">
+                <h3>Pending Corrections</h3>
+                <p style="color: #666; margin-bottom: 16px;">
+                    Shows employees who forgot to clock out (missing Time Out) and employee-reported times waiting for your approval.
+                </p>
+                <div id="pending-corrections-list"></div>
+            </div>
+
             <!-- Reports Tab -->
             <div id="reports-tab" class="tab-content">
                 <h3>Weekly Reports</h3>
@@ -791,6 +804,33 @@
     </div>
 
     <div id="message" class="message hidden"></div>
+
+    <!-- Missing Clock-Out (forgotten punch) Modal -->
+    <div id="missing-clock-out-modal" class="modal hidden">
+        <div class="modal-content employee-profile-modal-content">
+            <span class="close-missing-clock-out" id="close-missing-clock-out-btn">&times;</span>
+            <h3>Forgot to Clock Out?</h3>
+            <p id="missing-clock-out-message">It looks like you forgot to clock out. What time did you leave?</p>
+            <form id="missing-clock-out-form" class="form">
+                <div class="form-group">
+                    <label for="missing-clock-out-date">Date</label>
+                    <input type="date" id="missing-clock-out-date" readonly disabled>
+                </div>
+                <div class="form-group">
+                    <label for="missing-clock-out-time">Time you left</label>
+                    <input type="time" id="missing-clock-out-time" required>
+                </div>
+                <p style="color: #666; font-size: 13px; margin-bottom: 12px;">
+                    This clock-out will be marked <strong>Pending Approval</strong> for a manager to review. You can then clock in for today.
+                </p>
+                <div id="missing-clock-out-error" style="color: #c00; margin-bottom: 10px; font-size: 14px;"></div>
+                <div class="form-actions" style="display: flex; gap: 12px; justify-content: center;">
+                    <button type="submit" class="btn btn-primary" style="width: auto; min-width: 140px;">Save &amp; Clock In</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-missing-clock-out-btn" style="width: auto;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Have a Great Day Popup Modal -->
     <div id="great-day-modal" class="popup-modal hidden">

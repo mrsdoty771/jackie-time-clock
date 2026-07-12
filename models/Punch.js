@@ -24,6 +24,20 @@ const PunchSchema = new mongoose.Schema(
 
     notes: { type: String },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    /**
+     * Employee-reported corrections (e.g. forgotten clock-out) need manager approval.
+     * Normal punches use 'none'. Employee-submitted clock-outs use 'pending' until reviewed.
+     */
+    approvalStatus: {
+      type: String,
+      enum: ['none', 'pending', 'approved', 'rejected'],
+      default: 'none',
+      index: true,
+    },
+    submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reviewedAt: { type: Date },
   },
   { timestamps: true }
 );
@@ -40,4 +54,3 @@ PunchSchema.index(
 );
 
 module.exports = mongoose.model('Punch', PunchSchema);
-

@@ -62,6 +62,7 @@ async function getReportData(companyId, user, startDateStr, endDateStr, employee
       type: p.punchType,
       time: p.punchTime,
       notes: p.notes || null,
+      approval_status: p.approvalStatus || 'none',
     });
   });
 

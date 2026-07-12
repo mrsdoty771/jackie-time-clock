@@ -20,6 +20,8 @@ let myClockAdminEmployeeId = null;
 let employeeHistoryRangeMode = 'this_week';
 /** Manager Reports date-range filter state. */
 let reportRangeMode = 'this_week';
+/** Context for forgotten clock-out modal (employee or manager self-punch). */
+let missingClockOutContext = null;
 
 // Intercept API 403 PASSWORD_RESET_REQUIRED so the app can show forced password change UI
 const _originalFetch = window.fetch;
@@ -634,6 +636,20 @@ function setupEventListeners() {
         loadEmployeeRecords();
     });
     document.getElementById('employee-records-print-btn')?.addEventListener('click', printEmployeeRecords);
+    document.getElementById('missing-clock-out-form')?.addEventListener('submit', handleMissingClockOutSubmit);
+    document.getElementById('cancel-missing-clock-out-btn')?.addEventListener('click', closeMissingClockOutModal);
+    document.getElementById('close-missing-clock-out-btn')?.addEventListener('click', closeMissingClockOutModal);
+    document.getElementById('pending-corrections-list')?.addEventListener('click', (e) => {
+        const approveBtn = e.target.closest('[data-approve-pending]');
+        const rejectBtn = e.target.closest('[data-reject-pending]');
+        if (approveBtn) {
+            reviewPendingCorrection(approveBtn.dataset.approvePending, 'approve', approveBtn.dataset.date || '');
+        } else if (rejectBtn) {
+            if (confirm('Reject and remove this employee-reported clock-out? The shift will be open again until fixed.')) {
+                reviewPendingCorrection(rejectBtn.dataset.rejectPending, 'reject');
+            }
+        }
+    });
     
     // Manager tabs — use currentTarget so clicking the label/text still switches the tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -642,6 +658,7 @@ function setupEventListeners() {
             if (tab) switchTab(tab);
         });
     });
+    document.getElementById('manager-my-clock-btn')?.addEventListener('click', () => switchTab('my-clock'));
     
     // Employee management — Add Employee modal
     document.getElementById('add-employee-btn')?.addEventListener('click', openAddEmployeeModal);
@@ -1149,6 +1166,103 @@ function handleLogout() {
 }
 
 // Employee Functions
+function openMissingClockOutModal(data, options = {}) {
+    missingClockOutContext = {
+        openLocalDate: data.open_local_date,
+        clockInTime: data.clock_in_time,
+        noteText: options.noteText || null,
+        source: options.source || 'employee',
+    };
+
+    const modal = document.getElementById('missing-clock-out-modal');
+    const dateEl = document.getElementById('missing-clock-out-date');
+    const timeEl = document.getElementById('missing-clock-out-time');
+    const msgEl = document.getElementById('missing-clock-out-message');
+    const errEl = document.getElementById('missing-clock-out-error');
+    if (errEl) errEl.textContent = '';
+    if (dateEl) dateEl.value = data.open_local_date || '';
+    if (timeEl) timeEl.value = '';
+    if (msgEl) {
+        const dayLabel = data.open_local_date ? formatShortDate(data.open_local_date) : 'a previous day';
+        msgEl.textContent = `It looks like you forgot to clock out on ${dayLabel}. What time did you leave?`;
+    }
+    modal?.classList.remove('hidden');
+    timeEl?.focus();
+}
+
+function closeMissingClockOutModal() {
+    document.getElementById('missing-clock-out-modal')?.classList.add('hidden');
+    document.getElementById('missing-clock-out-form')?.reset();
+    const errEl = document.getElementById('missing-clock-out-error');
+    if (errEl) errEl.textContent = '';
+    missingClockOutContext = null;
+}
+
+function handleMissingClockOutSubmit(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('missing-clock-out-error');
+    if (errEl) errEl.textContent = '';
+    if (!missingClockOutContext?.openLocalDate) {
+        if (errEl) errEl.textContent = 'Missing shift details. Close and try Clock In again.';
+        return;
+    }
+
+    const timeVal = document.getElementById('missing-clock-out-time')?.value || '';
+    if (!timeVal) {
+        if (errEl) errEl.textContent = 'Please enter the time you left.';
+        return;
+    }
+
+    const clockOutLocal = `${missingClockOutContext.openLocalDate}T${timeVal}`;
+    const noteText = missingClockOutContext.noteText || null;
+    const source = missingClockOutContext.source || 'employee';
+
+    fetch(`${API_BASE}/punch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            punch_type: 'clock_in',
+            notes: noteText,
+            resolve_missing_clock_out: { clock_out_time: clockOutLocal },
+        }),
+        credentials: 'include',
+    })
+        .then(async (res) => {
+            const text = await res.text();
+            let data = {};
+            try {
+                if (text.trim()) data = JSON.parse(text);
+            } catch (_) {}
+            return { ok: res.ok, status: res.status, data };
+        })
+        .then(({ ok, status, data }) => {
+            if (ok && data.success) {
+                closeMissingClockOutModal();
+                if (source === 'manager') {
+                    showMessage('Pending clock-out saved and you are clocked in. A manager should approve the correction.', 'success');
+                    const noteEl = document.getElementById('my-clock-note');
+                    if (noteEl) noteEl.value = '';
+                    loadMyClockPunches();
+                    loadPendingCorrections();
+                } else {
+                    const fullName = currentUser?.employee_name || currentUser?.username || 'Employee';
+                    showGreatDayModal(getFirstName(fullName));
+                    const noteTextarea = document.getElementById('punch-note');
+                    if (noteTextarea) noteTextarea.value = '';
+                    loadEmployeeRecords();
+                }
+            } else {
+                const msg = data.error || 'Could not save clock-out and clock in.';
+                if (errEl) errEl.textContent = msg;
+                else showMessage(msg, 'error');
+            }
+        })
+        .catch(() => {
+            if (errEl) errEl.textContent = 'Error saving. Please try again.';
+            else showMessage('Error recording punch', 'error');
+        });
+}
+
 function handlePunch(punchType) {
     // Get note from textarea
     const noteTextarea = document.getElementById('punch-note');
@@ -1194,6 +1308,8 @@ function handlePunch(punchType) {
                 noteTextarea.value = '';
             }
             loadEmployeeRecords();
+        } else if (data.code === 'MISSING_CLOCK_OUT') {
+            openMissingClockOutModal(data, { noteText: noteText || null, source: 'employee' });
         } else {
             if (status === 409 || data.code === 'DUPLICATE_PUNCH_TYPE_FOR_DAY') {
                 showMessage(data.error || 'Duplicate punch for that day.', 'error');
@@ -1417,6 +1533,7 @@ function buildEmployeeTimesheetDataFromPunches(records, employeeName) {
                 type: record.punch_type,
                 time: record.punch_time,
                 notes: record.notes || null,
+                approval_status: record.approval_status || 'none',
             };
         });
 
@@ -1600,6 +1717,7 @@ function loadInitialData() {
         loadEmployees();
         loadEmployeesForPunch();
         loadEmployeesForReport();
+        loadPendingCorrections();
     }
 }
 
@@ -1699,9 +1817,169 @@ function displayMyClockRecords(records) {
     const html = slice.map(record => {
         const date = new Date(record.punch_time);
         const typeClass = record.punch_type.replace('_', '-');
-        return `<div class="record-item" style="margin-bottom: 6px;"><span class="record-type ${typeClass}">${formatPunchType(record.punch_type)}</span> <span style="margin-left: 10px;">${formatDateTime(date)}</span></div>`;
+        const pending = record.approval_status === 'pending'
+            ? ' <span class="pending-flag">(Pending)</span>'
+            : '';
+        return `<div class="record-item" style="margin-bottom: 6px;"><span class="record-type ${typeClass}">${formatPunchType(record.punch_type)}</span> <span style="margin-left: 10px;">${formatDateTime(date)}</span>${pending}</div>`;
     }).join('');
     container.innerHTML = html;
+}
+
+function localTimeInputFromPunchTime(punchTime) {
+    if (!punchTime) return '';
+    try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: companyTimezone || 'UTC',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        }).formatToParts(new Date(punchTime));
+        const hour = parts.find((p) => p.type === 'hour')?.value || '00';
+        const minute = parts.find((p) => p.type === 'minute')?.value || '00';
+        return `${hour}:${minute}`;
+    } catch (_) {
+        const d = new Date(punchTime);
+        if (Number.isNaN(d.getTime())) return '';
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+}
+
+function loadPendingCorrections() {
+    const listEl = document.getElementById('pending-corrections-list');
+    const badge = document.getElementById('pending-corrections-badge');
+    if (!listEl && !badge) return;
+
+    fetch(`${API_BASE}/pending-corrections`, { credentials: 'include' })
+        .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Failed to load pending corrections');
+            return data;
+        })
+        .then((data) => {
+            const items = Array.isArray(data.items) ? data.items : [];
+            const count = Number(data.count) || items.length;
+            if (badge) {
+                badge.textContent = String(count);
+                badge.classList.toggle('hidden', count === 0);
+            }
+            if (!listEl) return;
+            if (items.length === 0) {
+                listEl.innerHTML = '<p style="color: #666;">No missing clock-outs or pending approvals.</p>';
+                return;
+            }
+            listEl.innerHTML = items.map((item) => {
+                if (item.kind === 'missing_clock_out') {
+                    const dateStr = item.punch_local_date || '';
+                    const safeId = escapeHtml(item.id);
+                    return `
+                        <div class="pending-correction-card" data-missing-id="${safeId}">
+                            <h4>${escapeHtml(item.employee_name || 'Employee')}
+                                <span class="pending-flag" style="margin-left: 8px;">Missing Clock-Out</span>
+                            </h4>
+                            <div class="pending-correction-meta">
+                                Work date: <strong>${formatShortDate(dateStr)}</strong><br>
+                                Clocked in: <strong>${formatTimeOnly(item.clock_in_time)}</strong> — no Time Out recorded.
+                            </div>
+                            <div class="pending-correction-actions">
+                                <div class="form-group">
+                                    <label for="missing-time-${safeId}">Set clock-out time</label>
+                                    <input type="time" id="missing-time-${safeId}" required>
+                                </div>
+                                <button type="button" class="btn btn-success" style="width: auto;"
+                                    data-resolve-missing="${safeId}"
+                                    data-employee-id="${escapeHtml(item.employee_id)}"
+                                    data-date="${escapeHtml(dateStr)}">Save Clock-Out</button>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const dateStr = item.punch_local_date || getLocalDateStringInTz(item.punch_time, companyTimezone);
+                const timeVal = localTimeInputFromPunchTime(item.punch_time);
+                return `
+                    <div class="pending-correction-card" data-punch-id="${escapeHtml(item.id)}">
+                        <h4>${escapeHtml(item.employee_name || 'Employee')}
+                            <span class="pending-flag" style="margin-left: 8px;">Pending Approval</span>
+                        </h4>
+                        <div class="pending-correction-meta">
+                            Claimed clock-out: <strong>${formatShortDate(dateStr)}</strong> at <strong>${formatTimeOnly(item.punch_time)}</strong>
+                            ${item.notes ? `<div style="margin-top: 6px;">${escapeHtml(item.notes)}</div>` : ''}
+                        </div>
+                        <div class="pending-correction-actions">
+                            <div class="form-group">
+                                <label for="pending-time-${escapeHtml(item.id)}">Correct time (optional)</label>
+                                <input type="time" id="pending-time-${escapeHtml(item.id)}" value="${timeVal}">
+                            </div>
+                            <button type="button" class="btn btn-success" style="width: auto;" data-approve-pending="${escapeHtml(item.id)}" data-date="${escapeHtml(dateStr || '')}">Approve</button>
+                            <button type="button" class="btn btn-danger" style="width: auto;" data-reject-pending="${escapeHtml(item.id)}">Reject</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        })
+        .catch((err) => {
+            console.error('loadPendingCorrections:', err);
+            if (listEl) listEl.innerHTML = `<p style="color: #c00;">${escapeHtml(err.message || 'Could not load pending corrections.')}</p>`;
+        });
+}
+
+function resolveMissingClockOutFromManager(employeeId, dateStr, itemId) {
+    const timeEl = document.getElementById(`missing-time-${itemId}`);
+    const timeVal = timeEl?.value || '';
+    if (!employeeId || !dateStr || !timeVal) {
+        showMessage('Enter a clock-out time first.', 'error');
+        return;
+    }
+
+    fetch(`${API_BASE}/pending-corrections/resolve-missing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            employee_id: employeeId,
+            local_date: dateStr,
+            clock_out_time: timeVal,
+        }),
+    })
+        .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Could not save clock-out');
+            return data;
+        })
+        .then(() => {
+            showMessage('Clock-out saved.', 'success');
+            loadPendingCorrections();
+        })
+        .catch((err) => showMessage(err.message || 'Could not save clock-out', 'error'));
+}
+
+function reviewPendingCorrection(punchId, action, dateStr) {
+    if (!punchId) return;
+    const body = { action };
+    if (action === 'approve') {
+        const timeEl = document.getElementById(`pending-time-${punchId}`);
+        const timeVal = timeEl?.value || '';
+        if (timeVal && dateStr) {
+            body.punch_time = `${dateStr}T${timeVal}`;
+        }
+    }
+
+    fetch(`${API_BASE}/punches/${encodeURIComponent(punchId)}/approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include',
+    })
+        .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Review failed');
+            return data;
+        })
+        .then(() => {
+            showMessage(action === 'approve' ? 'Correction approved.' : 'Correction rejected and removed.', 'success');
+            loadPendingCorrections();
+        })
+        .catch((err) => showMessage(err.message || 'Could not review correction', 'error'));
 }
 
 function handleManagerPunch(punchType) {
@@ -1726,6 +2004,8 @@ function handleManagerPunch(punchType) {
                 showMessage('Punch recorded.', 'success');
                 if (noteEl) noteEl.value = '';
                 loadMyClockPunches();
+            } else if (data.code === 'MISSING_CLOCK_OUT') {
+                openMissingClockOutModal(data, { noteText: notes || null, source: 'manager' });
             } else {
                 if (status === 409 || data.code === 'DUPLICATE_PUNCH_TYPE_FOR_DAY') {
                     showMessage(data.error || 'Duplicate punch for that day.', 'error');
@@ -3020,7 +3300,12 @@ function formatTimeOnly(date) {
 function getDayPunchCell(day, type) {
     const punches = [...(day.punches || [])].sort((a, b) => new Date(a.time) - new Date(b.time));
     const match = punches.find((p) => p.type === type);
-    return match ? formatTimeOnly(match.time) : '';
+    if (!match) return '';
+    const timeText = formatTimeOnly(match.time);
+    if (match.approval_status === 'pending') {
+        return `${timeText} <span class="pending-flag" title="Pending manager approval">(Pending)</span>`;
+    }
+    return timeText;
 }
 
 function getDayNotes(day) {
@@ -3030,10 +3315,15 @@ function getDayNotes(day) {
         .join('; ');
 }
 
+function dayHasPendingApproval(day) {
+    return (day.punches || []).some((p) => p.approval_status === 'pending');
+}
+
 function buildTimesheetRow(day) {
     const notes = getDayNotes(day);
+    const pendingClass = dayHasPendingApproval(day) ? ' timesheet-pending-cell' : '';
     return `
-        <tr>
+        <tr class="${pendingClass.trim()}">
             <td>${formatShortDate(day.date)}</td>
             <td>${getDayPunchCell(day, 'clock_in')}</td>
             <td>${getDayPunchCell(day, 'lunch_out')}</td>
@@ -3377,6 +3667,11 @@ function switchTab(tabName) {
         }
     });
 
+    const myClockNavBtn = document.getElementById('manager-my-clock-btn');
+    if (myClockNavBtn) {
+        myClockNavBtn.classList.toggle('active', tabName === 'my-clock');
+    }
+
     // Update tab content
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
@@ -3386,6 +3681,9 @@ function switchTab(tabName) {
     // Load My Clock when switching to that tab
     if (tabName === 'my-clock') {
         loadMyClockState();
+    }
+    if (tabName === 'pending-corrections') {
+        loadPendingCorrections();
     }
     // Load company settings when switching to that tab
     if (tabName === 'company-settings' && (currentUser?.role === 'manager' || currentUser?.role === 'super-admin')) {
