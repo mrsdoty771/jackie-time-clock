@@ -650,12 +650,19 @@ function setupEventListeners() {
     document.getElementById('pending-corrections-list')?.addEventListener('click', (e) => {
         const approveBtn = e.target.closest('[data-approve-pending]');
         const rejectBtn = e.target.closest('[data-reject-pending]');
+        const resolveBtn = e.target.closest('[data-resolve-missing]');
         if (approveBtn) {
             reviewPendingCorrection(approveBtn.dataset.approvePending, 'approve', approveBtn.dataset.date || '');
         } else if (rejectBtn) {
             if (confirm('Reject and remove this employee-reported clock-out? The shift will be open again until fixed.')) {
                 reviewPendingCorrection(rejectBtn.dataset.rejectPending, 'reject');
             }
+        } else if (resolveBtn) {
+            resolveMissingClockOutFromManager(
+                resolveBtn.dataset.employeeId || '',
+                resolveBtn.dataset.date || '',
+                resolveBtn.dataset.resolveMissing || ''
+            );
         }
     });
     
