@@ -291,6 +291,13 @@ function loadManagerNavCompanyName() {
         .catch(() => { el.textContent = 'Company'; });
 }
 
+function updateManagerNavTitle() {
+    const el = document.getElementById('manager-nav-title');
+    if (!el) return;
+    const name = (currentUser?.name || currentUser?.employee_name || currentUser?.username || '').trim();
+    el.textContent = name ? `Manager Dashboard - ${name}` : 'Manager Dashboard';
+}
+
 function applyCompanyPayWeekFromSettings(data) {
     if (!data) return;
     const s = data.pay_week_start_day;
@@ -348,6 +355,7 @@ function showPage(role) {
             document.getElementById('manager-page').classList.remove('hidden');
             switchTab('punches');
             loadManagerNavCompanyName();
+            updateManagerNavTitle();
             loadEmployees();
             loadEmployeesForPunch();
             loadEmployeesForReport();
@@ -3962,6 +3970,7 @@ function handleManagerProfileSubmit(e) {
                     currentUser.ext = ext || null;
                     if (data.employee_id !== undefined) currentUser.employee_id = data.employee_id || null;
                 }
+                updateManagerNavTitle();
                 document.getElementById('profile-new-password').value = '';
                 document.getElementById('profile-confirm-password').value = '';
                 loadManagerProfile();

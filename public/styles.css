@@ -252,13 +252,26 @@ body {
 
 .btn-nav-my-clock {
     width: auto;
-    padding: 8px 16px;
+    padding: 10px 14px;
     font-size: 15px;
+    background: #ffe750;
+    border: none;
+    color: #333;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-nav-my-clock:hover {
+    background: #ffec6b;
+    color: #222;
 }
 
 .btn-nav-my-clock.active {
-    background: #667eea;
-    color: #fff;
+    background: #ffe750;
+    color: #333;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 /* --- Container --- */
@@ -531,21 +544,22 @@ body {
 /* --- Manager Tabs --- */
 .tabs {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: center;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 20px;
     padding-bottom: 5px;
 }
 
 .tab-btn {
-    padding: 12px 20px;
+    padding: 10px 14px;
     background: #ffe750;
     border: none;
     color: #333;
     border-radius: 5px;
     cursor: pointer;
     white-space: nowrap;
+    font-size: 15px;
 }
 
 .tab-btn:hover {
