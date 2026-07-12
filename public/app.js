@@ -842,7 +842,6 @@ function setupEventListeners() {
     editEmpEl?.addEventListener('change', maybeAutoLoadEditPunches);
     editDateEl?.addEventListener('change', maybeAutoLoadEditPunches);
     document.getElementById('edit-punch-form')?.addEventListener('submit', handleEditPunchSubmit);
-    document.getElementById('cancel-edit-punch-btn')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
     document.querySelector('.close-edit-punch')?.addEventListener('click', () => document.getElementById('edit-punch-modal')?.classList.add('hidden'));
     
     // Company Settings
