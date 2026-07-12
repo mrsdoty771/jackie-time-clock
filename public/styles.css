@@ -250,10 +250,22 @@ body {
     gap: 12px;
 }
 
-.btn-nav-my-clock {
+.navbar-manager .navbar-right .btn-nav-my-clock,
+.navbar-manager .navbar-right .btn-logout {
     width: auto;
-    padding: 10px 14px;
+    min-width: 110px;
+    height: 42px;
+    padding: 0 18px;
     font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.btn-nav-my-clock {
     background: #ffe750;
     border: none;
     color: #333;
@@ -270,7 +282,7 @@ body {
 .btn-nav-my-clock.active {
     background: #ffe750;
     color: #333;
-    font-weight: bold;
+    font-weight: 700;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
@@ -855,9 +867,9 @@ body {
     table-layout: fixed;
 }
 
-.timesheet-table col.col-date { width: 74px; }
-.timesheet-table col.col-time { width: 58px; }
-.timesheet-table col.col-hours { width: 44px; }
+.timesheet-table col.col-date { width: 78px; }
+.timesheet-table col.col-time { width: 72px; }
+.timesheet-table col.col-hours { width: 78px; }
 
 .timesheet-table th,
 .timesheet-table td {
@@ -885,6 +897,7 @@ body {
 .timesheet-table td.timesheet-hours {
     padding: 5px 4px;
     white-space: nowrap;
+    overflow: visible;
 }
 
 .timesheet-table th {
@@ -892,6 +905,7 @@ body {
     font-weight: bold;
     font-size: 11px;
     line-height: 1.2;
+    white-space: nowrap;
 }
 
 .timesheet-hours {

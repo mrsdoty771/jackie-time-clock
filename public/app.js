@@ -1621,9 +1621,9 @@ function getEmployeeTimesheetPrintStyles() {
             font-size: 12px;
             table-layout: fixed;
         }
-        .timesheet-table col.col-date { width: 74px; }
-        .timesheet-table col.col-time { width: 58px; }
-        .timesheet-table col.col-hours { width: 44px; }
+        .timesheet-table col.col-date { width: 78px; }
+        .timesheet-table col.col-time { width: 72px; }
+        .timesheet-table col.col-hours { width: 78px; }
         .timesheet-table th,
         .timesheet-table td {
             border: 1px solid #ccc;
@@ -1648,6 +1648,7 @@ function getEmployeeTimesheetPrintStyles() {
             background: #f5f5f5;
             font-weight: bold;
             font-size: 10px;
+            white-space: nowrap;
         }
         .timesheet-hours { text-align: right; white-space: nowrap; }
         .timesheet-grand-total {
@@ -3488,9 +3489,9 @@ function printReport() {
                     font-size: 12px;
                     table-layout: fixed;
                 }
-                .timesheet-table col.col-date { width: 74px; }
-                .timesheet-table col.col-time { width: 58px; }
-                .timesheet-table col.col-hours { width: 44px; }
+                .timesheet-table col.col-date { width: 78px; }
+                .timesheet-table col.col-time { width: 72px; }
+                .timesheet-table col.col-hours { width: 78px; }
                 .timesheet-table th,
                 .timesheet-table td {
                     border: 1px solid #ccc;
@@ -3515,6 +3516,7 @@ function printReport() {
                     background: #f5f5f5;
                     font-weight: bold;
                     font-size: 10px;
+                    white-space: nowrap;
                 }
                 .timesheet-hours { text-align: right; white-space: nowrap; }
                 .timesheet-grand-total {
