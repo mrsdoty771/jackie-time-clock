@@ -99,11 +99,7 @@ async function redeemLoginInviteFromUrl() {
     }
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-} else {
-    init();
-}
+
 
 function loadCompanyNameForLogin() {
     const companyId = getLoginCompanyId();
@@ -165,10 +161,8 @@ function getWeekStartDateForDate(date, weekStartDay) {
 
 function initializeWeekStart() {
     const { startDate, endDate } = getPayWeekLocalDateRangeInTz(0);
-    const rs = document.getElementById('report-start-date');
-    const re = document.getElementById('report-end-date');
-    if (rs) rs.value = startDate;
-    if (re) re.value = endDate;
+    setDateInputValue('report-start-date', startDate);
+    setDateInputValue('report-end-date', endDate);
     updateReportRangeLabel({ startDate, endDate, label: 'This Week' });
 }
 
@@ -197,10 +191,8 @@ function updateReportRangeLabel(range) {
 
 function applyReportRangeToInputs(range) {
     if (!range) return;
-    const rs = document.getElementById('report-start-date');
-    const re = document.getElementById('report-end-date');
-    if (rs) rs.value = range.startDate;
-    if (re) re.value = range.endDate;
+    setDateInputValue('report-start-date', range.startDate);
+    setDateInputValue('report-end-date', range.endDate);
 }
 
 function syncPayWeekEndFromStart() {
@@ -548,7 +540,7 @@ function bindDateInputFullClick(inputEl) {
 }
 
 function bindPunchDateInputsFullClick() {
-    ['manual-punch-date', 'edit-punches-date', 'edit-punch-date'].forEach((id) => {
+    ['edit-punch-date'].forEach((id) => {
         bindDateInputFullClick(document.getElementById(id));
     });
 }
@@ -795,6 +787,7 @@ function setupEventListeners() {
     document.getElementById('my-lunch-out-btn')?.addEventListener('click', () => handleManagerPunch('lunch_in'));
     // Manual punch
     document.getElementById('manual-punch-form')?.addEventListener('submit', handleManualPunch);
+    initAllCustomDatePickers();
     setManualPunchDefaultsToCompanyNow();
     bindPunchDateInputsFullClick();
 
@@ -809,12 +802,21 @@ function setupEventListeners() {
             const current = getPayWeekLocalDateRangeInTz(0);
             const rs = document.getElementById('report-start-date');
             const re = document.getElementById('report-end-date');
-            if (rs && !rs.value) rs.value = current.startDate;
-            if (re && !re.value) re.value = current.endDate;
+            if (rs && !rs.value) setDateInputValue('report-start-date', current.startDate);
+            if (re && !re.value) setDateInputValue('report-end-date', current.endDate);
+            syncDateInputUi('report-start-date');
+            syncDateInputUi('report-end-date');
         }
         const preview = getReportRangeSelection();
         if (preview) updateReportRangeLabel(preview);
     });
+    const syncReportCustomPreview = () => {
+        if (reportRangeMode !== 'custom') return;
+        const preview = getReportRangeSelection();
+        if (preview) updateReportRangeLabel(preview);
+    };
+    document.getElementById('report-start-date')?.addEventListener('change', syncReportCustomPreview);
+    document.getElementById('report-end-date')?.addEventListener('change', syncReportCustomPreview);
     document.getElementById('print-report-btn')?.addEventListener('click', printReport);
     document.getElementById('email-report-btn')?.addEventListener('click', emailReport);
     
@@ -3220,9 +3222,8 @@ function handleManualPunch(e) {
                 const select = document.getElementById('punch-employee');
                 if (select && select.options.length) select.selectedIndex = 0;
                 const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
-                const dateEl = document.getElementById('manual-punch-date');
                 const timeEl = document.getElementById('manual-punch-time');
-                if (dateEl && dateStr) dateEl.value = dateStr;
+                if (dateStr) setManualPunchDateValue(dateStr);
                 if (timeEl && timeStr) timeEl.value = timeStr.slice(0, 5);
             } else {
                 showMessage(data.error || 'Failed to record punch', 'error');
@@ -4270,11 +4271,288 @@ function getStartOfLocalDayInstant(localDateStr, timezone) {
     return startUtc || instantOnLocalDate(s, zone);
 }
 
+function formatDatePickerLabel(yyyyMmDd) {
+    const s = String(yyyyMmDd || '').trim().slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return 'Select date';
+    return `${m[2]}/${m[3]}/${m[1]}`;
+}
+
+function parseYmdParts(yyyyMmDd) {
+    const s = String(yyyyMmDd || '').trim().slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return {
+        year: parseInt(m[1], 10),
+        month: parseInt(m[2], 10) - 1,
+        day: parseInt(m[3], 10),
+    };
+}
+
+function ymdFromParts(year, monthIndex, day) {
+    return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function todayYmdPartsInCompanyTz() {
+    try {
+        const now = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
+        const parts = parseYmdParts(now.dateStr);
+        if (parts) return parts;
+    } catch (_) { /* fallback below */ }
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+}
+
+/** Registry: hidden input id → picker controller */
+const customDatePickers = Object.create(null);
+
+function closeAllCustomDatePickers(exceptRootId) {
+    Object.keys(customDatePickers).forEach((inputId) => {
+        const p = customDatePickers[inputId];
+        if (!p) return;
+        if (exceptRootId && p.rootId === exceptRootId) return;
+        p.close();
+    });
+}
+
+function syncDateInputUi(inputId) {
+    const picker = customDatePickers[inputId];
+    if (picker) picker.syncFromInput();
+}
+
+function setDateInputValue(inputId, yyyyMmDd, options) {
+    const value = String(yyyyMmDd || '').slice(0, 10);
+    const picker = customDatePickers[inputId];
+    if (picker) {
+        picker.setValue(value, options);
+        return;
+    }
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    el.value = value;
+    if (options?.dispatchChange) {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+}
+
+function createCustomDatePicker(prefix) {
+    const root = document.getElementById(`${prefix}-datepicker`);
+    const inputId = root?.dataset?.dateInput;
+    if (!root || !inputId || root.dataset.ready === '1') return null;
+    const inputEl = document.getElementById(inputId);
+    if (!inputEl) return null;
+
+    const trigger = document.getElementById(`${prefix}-datepicker-trigger`);
+    const label = document.getElementById(`${prefix}-datepicker-label`);
+    const panel = document.getElementById(`${prefix}-datepicker-panel`);
+    const monthSel = document.getElementById(`${prefix}-cal-month`);
+    const yearSel = document.getElementById(`${prefix}-cal-year`);
+    const prevBtn = document.getElementById(`${prefix}-cal-prev`);
+    const nextBtn = document.getElementById(`${prefix}-cal-next`);
+    const grid = document.getElementById(`${prefix}-cal-grid`);
+    if (!trigger || !panel || !monthSel || !yearSel || !grid) return null;
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (!monthSel.options.length) {
+        months.forEach((name, idx) => {
+            const opt = document.createElement('option');
+            opt.value = String(idx);
+            opt.textContent = name;
+            monthSel.appendChild(opt);
+        });
+    }
+    if (!yearSel.options.length) {
+        const nowYear = new Date().getFullYear();
+        for (let y = nowYear - 5; y <= nowYear + 5; y++) {
+            const opt = document.createElement('option');
+            opt.value = String(y);
+            opt.textContent = String(y);
+            yearSel.appendChild(opt);
+        }
+    }
+
+    function syncLabel() {
+        if (label) label.textContent = formatDatePickerLabel(inputEl.value);
+    }
+
+    function render(year, monthIndex) {
+        const first = new Date(year, monthIndex, 1);
+        const startWeekday = first.getDay();
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const daysInPrev = new Date(year, monthIndex, 0).getDate();
+        const selectedYmd = inputEl.value || '';
+        const cells = [];
+
+        for (let i = 0; i < 42; i++) {
+            let cellYear = year;
+            let cellMonth = monthIndex;
+            let cellDay;
+            let muted = false;
+
+            if (i < startWeekday) {
+                cellDay = daysInPrev - startWeekday + i + 1;
+                cellMonth = monthIndex - 1;
+                if (cellMonth < 0) {
+                    cellMonth = 11;
+                    cellYear = year - 1;
+                }
+                muted = true;
+            } else if (i >= startWeekday + daysInMonth) {
+                cellDay = i - startWeekday - daysInMonth + 1;
+                cellMonth = monthIndex + 1;
+                if (cellMonth > 11) {
+                    cellMonth = 0;
+                    cellYear = year + 1;
+                }
+                muted = true;
+            } else {
+                cellDay = i - startWeekday + 1;
+            }
+
+            const ymd = ymdFromParts(cellYear, cellMonth, cellDay);
+            cells.push(
+                `<button type="button" class="custom-datepicker-day${muted ? ' muted' : ''}${ymd === selectedYmd ? ' selected' : ''}" data-date="${ymd}">${cellDay}</button>`
+            );
+        }
+        grid.innerHTML = cells.join('');
+    }
+
+    function ensureYearOption(year) {
+        if (![...yearSel.options].some((o) => o.value === String(year))) {
+            const opt = document.createElement('option');
+            opt.value = String(year);
+            opt.textContent = String(year);
+            yearSel.appendChild(opt);
+        }
+    }
+
+    function showMonth(year, monthIndex) {
+        ensureYearOption(year);
+        monthSel.value = String(monthIndex);
+        yearSel.value = String(year);
+        render(year, monthIndex);
+    }
+
+    function close() {
+        panel.classList.add('hidden');
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function open() {
+        closeAllCustomDatePickers(root.id);
+        let parts = parseYmdParts(inputEl.value) || todayYmdPartsInCompanyTz();
+        showMonth(parts.year, parts.month);
+        panel.classList.remove('hidden');
+        trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    function toggle() {
+        if (panel.classList.contains('hidden')) open();
+        else close();
+    }
+
+    function setValue(yyyyMmDd, options) {
+        inputEl.value = String(yyyyMmDd || '').slice(0, 10);
+        syncLabel();
+        const parts = parseYmdParts(inputEl.value);
+        if (parts && !panel.classList.contains('hidden')) {
+            showMonth(parts.year, parts.month);
+        }
+        if (options?.dispatchChange) {
+            inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    function syncFromInput() {
+        syncLabel();
+    }
+
+    function shiftMonth(delta) {
+        let month = parseInt(monthSel.value, 10);
+        let year = parseInt(yearSel.value, 10);
+        if (Number.isNaN(month) || Number.isNaN(year)) {
+            const d = todayYmdPartsInCompanyTz();
+            month = d.month;
+            year = d.year;
+        }
+        month += delta;
+        if (month < 0) {
+            month = 11;
+            year -= 1;
+        } else if (month > 11) {
+            month = 0;
+            year += 1;
+        }
+        showMonth(year, month);
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle();
+    });
+    prevBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shiftMonth(-1);
+    });
+    nextBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        shiftMonth(1);
+    });
+    monthSel.addEventListener('change', () => {
+        render(parseInt(yearSel.value, 10), parseInt(monthSel.value, 10));
+    });
+    yearSel.addEventListener('change', () => {
+        render(parseInt(yearSel.value, 10), parseInt(monthSel.value, 10));
+    });
+    grid.addEventListener('click', (e) => {
+        const btn = e.target.closest('.custom-datepicker-day');
+        if (!btn) return;
+        const date = btn.dataset.date;
+        if (!date) return;
+        setValue(date, { dispatchChange: true });
+        close();
+    });
+
+    setTimeout(() => {
+        document.addEventListener('click', (e) => {
+            if (panel.classList.contains('hidden')) return;
+            if (root.contains(e.target)) return;
+            close();
+        });
+    }, 0);
+
+    syncLabel();
+    root.dataset.ready = '1';
+
+    const controller = {
+        rootId: root.id,
+        inputId,
+        setValue,
+        syncFromInput,
+        close,
+        open,
+    };
+    customDatePickers[inputId] = controller;
+    return controller;
+}
+
+function initAllCustomDatePickers() {
+    ['manual-punch', 'edit-punches', 'report-start', 'report-end'].forEach(createCustomDatePicker);
+}
+
+function setManualPunchDateValue(yyyyMmDd) {
+    setDateInputValue('manual-punch-date', yyyyMmDd);
+}
+
 function setManualPunchDefaultsToCompanyNow() {
     const { dateStr, timeStr } = utcToLocalDateAndTimeInTz(new Date(), companyTimezone);
     const manualDateEl = document.getElementById('manual-punch-date');
     const manualTimeEl = document.getElementById('manual-punch-time');
-    if (manualDateEl && !manualDateEl.value && dateStr) manualDateEl.value = dateStr;
+    if (dateStr && (!manualDateEl?.value)) setManualPunchDateValue(dateStr);
+    else if (manualDateEl?.value) syncDateInputUi('manual-punch-date');
     if (manualTimeEl && !manualTimeEl.value && timeStr) manualTimeEl.value = timeStr.slice(0, 5);
 }
 
@@ -4405,4 +4683,11 @@ window.revokeManagerRights = revokeManagerRights;
 window.revokeManagerRightsFromEditModal = revokeManagerRightsFromEditModal;
 window.editPunch = editPunch;
 window.deletePunch = deletePunch;
+
+// Start after the whole script has evaluated (avoids TDZ on const/let used during setup)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
 
