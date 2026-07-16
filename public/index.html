@@ -746,8 +746,29 @@
                         <input type="tel" id="emp-phone">
                     </div>
                     <div class="form-group">
-                        <label for="emp-hire-date">Hire Date</label>
-                        <input type="date" id="emp-hire-date">
+                        <label for="emp-hire-datepicker-trigger">Hire Date</label>
+                        <input type="hidden" id="emp-hire-date" value="">
+                        <div class="custom-datepicker" id="emp-hire-datepicker" data-date-input="emp-hire-date">
+                            <button type="button" class="custom-datepicker-trigger" id="emp-hire-datepicker-trigger" aria-haspopup="dialog" aria-expanded="false">
+                                <svg class="custom-datepicker-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                <span class="custom-datepicker-label" id="emp-hire-datepicker-label">Select date</span>
+                                <svg class="custom-datepicker-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="custom-datepicker-panel hidden" id="emp-hire-datepicker-panel" role="dialog" aria-label="Choose hire date">
+                                <div class="custom-datepicker-nav">
+                                    <button type="button" class="custom-datepicker-nav-btn" id="emp-hire-cal-prev" aria-label="Previous month">&lsaquo;</button>
+                                    <div class="custom-datepicker-selects">
+                                        <select id="emp-hire-cal-month" aria-label="Month"></select>
+                                        <select id="emp-hire-cal-year" aria-label="Year"></select>
+                                    </div>
+                                    <button type="button" class="custom-datepicker-nav-btn" id="emp-hire-cal-next" aria-label="Next month">&rsaquo;</button>
+                                </div>
+                                <div class="custom-datepicker-weekdays" aria-hidden="true">
+                                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                </div>
+                                <div class="custom-datepicker-grid" id="emp-hire-cal-grid"></div>
+                            </div>
+                        </div>
                     </div>
                     <p style="color: #666; font-size: 13px; margin: 0 0 12px 0;">A temporary password is created automatically. Their login username is generated from their name (first name + last initial, e.g. Josh Doe → JoshD), with a number added if needed for uniqueness. You can change it anytime under Edit Employee. After you add them, credentials appear on the next screen—share them securely.</p>
                     <div class="form-actions">
@@ -989,7 +1010,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=11"></script>
+    <script src="script.js?v=13"></script>
 </body>
 </html>
 

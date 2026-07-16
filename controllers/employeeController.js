@@ -18,6 +18,10 @@ const {
   SYSTEM_CLOCK_EMPLOYEE_NUMBER,
 } = require('../utils/systemEmployee');
 
+// Default temp password for brand-new employees. They are forced to change it on
+// first login (mustChangePassword), so it stays predictable for the welcome text.
+const DEFAULT_NEW_EMPLOYEE_PASSWORD = 'password123';
+
 function generateTempPassword() {
   return crypto.randomBytes(9).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
 }
@@ -43,7 +47,7 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
   let shouldPersistCredentials = false;
 
   if (regeneratePassword) {
-    tempPassword = generateTempPassword();
+    tempPassword = DEFAULT_NEW_EMPLOYEE_PASSWORD;
     shouldPersistCredentials = true;
   } else {
     if (user.passwordDisplayEncrypted) {
@@ -61,7 +65,7 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
       }
     }
     if (!tempPassword) {
-      tempPassword = generateTempPassword();
+      tempPassword = DEFAULT_NEW_EMPLOYEE_PASSWORD;
       shouldPersistCredentials = true;
     }
   }
@@ -324,7 +328,7 @@ async function createEmployee(req, res) {
   if (tempPassword && tempPassword.length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
-  if (!tempPassword) tempPassword = generateTempPassword();
+  if (!tempPassword) tempPassword = DEFAULT_NEW_EMPLOYEE_PASSWORD;
 
   const isActive = active === undefined ? true : !!(active === true || active === 1 || active === '1');
 

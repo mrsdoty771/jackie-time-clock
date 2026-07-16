@@ -2403,6 +2403,9 @@ let editEmpMustChangePassword = false;
 let editEmpStoredPassword = '';
 let editEmpHasStoredPassword = false;
 
+// Default temp password for new/reset employees; they must change it on first login.
+const DEFAULT_TEMP_PASSWORD = 'password123';
+
 function generateClientTempPassword() {
     const bytes = new Uint8Array(9);
     crypto.getRandomValues(bytes);
@@ -2458,7 +2461,7 @@ function showEditEmpPasswordPlaintext() {
 function handleEditEmpGeneratePassword() {
     const input = document.getElementById('edit-emp-password');
     if (!input) return;
-    const generated = generateClientTempPassword();
+    const generated = DEFAULT_TEMP_PASSWORD;
     input.value = generated;
     input.removeAttribute('data-is-placeholder');
     editEmpStoredPassword = generated;
@@ -2946,6 +2949,7 @@ function showAddEmployeeForm() {
     document.getElementById('add-employee-form-panel')?.classList.remove('hidden');
     document.getElementById('add-employee-success-panel')?.classList.add('hidden');
     document.getElementById('add-employee-form')?.reset();
+    setDateInputValue('emp-hire-date', '');
     const msgEl = document.getElementById('add-employee-success-message');
     if (msgEl) {
         msgEl.textContent = '';
@@ -4550,7 +4554,7 @@ function createCustomDatePicker(prefix) {
 
 function initAllCustomDatePickers() {
     ['manual-punch', 'edit-punches', 'report-start', 'report-end',
-        'employee-history-start', 'employee-history-end'].forEach(createCustomDatePicker);
+        'employee-history-start', 'employee-history-end', 'emp-hire'].forEach(createCustomDatePicker);
 }
 
 function setManualPunchDateValue(yyyyMmDd) {
