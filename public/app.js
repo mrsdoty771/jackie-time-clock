@@ -631,6 +631,15 @@ function setupEventListeners() {
         employeeHistoryRangeMode = mode;
         const customWrap = document.getElementById('employee-history-custom-dates');
         if (customWrap) customWrap.classList.toggle('hidden', mode !== 'custom');
+        if (mode === 'custom') {
+            const startEl = document.getElementById('employee-history-start-date');
+            const endEl = document.getElementById('employee-history-end-date');
+            const current = getPayWeekLocalDateRangeInTz(0);
+            if (startEl && !startEl.value) setDateInputValue('employee-history-start-date', current.startDate);
+            if (endEl && !endEl.value) setDateInputValue('employee-history-end-date', current.endDate);
+            syncDateInputUi('employee-history-start-date');
+            syncDateInputUi('employee-history-end-date');
+        }
     });
     document.getElementById('employee-history-apply-btn')?.addEventListener('click', () => {
         loadEmployeeRecords();
@@ -4540,7 +4549,8 @@ function createCustomDatePicker(prefix) {
 }
 
 function initAllCustomDatePickers() {
-    ['manual-punch', 'edit-punches', 'report-start', 'report-end'].forEach(createCustomDatePicker);
+    ['manual-punch', 'edit-punches', 'report-start', 'report-end',
+        'employee-history-start', 'employee-history-end'].forEach(createCustomDatePicker);
 }
 
 function setManualPunchDateValue(yyyyMmDd) {

@@ -126,12 +126,54 @@
                     </div>
                     <div id="employee-history-custom-dates" class="hidden">
                         <div class="form-group">
-                            <label for="employee-history-start-date">Start Date</label>
-                            <input type="date" id="employee-history-start-date">
+                            <label for="employee-history-start-datepicker-trigger">Start Date</label>
+                            <input type="hidden" id="employee-history-start-date" value="">
+                            <div class="custom-datepicker" id="employee-history-start-datepicker" data-date-input="employee-history-start-date">
+                                <button type="button" class="custom-datepicker-trigger" id="employee-history-start-datepicker-trigger" aria-haspopup="dialog" aria-expanded="false">
+                                    <svg class="custom-datepicker-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    <span class="custom-datepicker-label" id="employee-history-start-datepicker-label">Select date</span>
+                                    <svg class="custom-datepicker-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                                <div class="custom-datepicker-panel hidden" id="employee-history-start-datepicker-panel" role="dialog" aria-label="Choose start date">
+                                    <div class="custom-datepicker-nav">
+                                        <button type="button" class="custom-datepicker-nav-btn" id="employee-history-start-cal-prev" aria-label="Previous month">&lsaquo;</button>
+                                        <div class="custom-datepicker-selects">
+                                            <select id="employee-history-start-cal-month" aria-label="Month"></select>
+                                            <select id="employee-history-start-cal-year" aria-label="Year"></select>
+                                        </div>
+                                        <button type="button" class="custom-datepicker-nav-btn" id="employee-history-start-cal-next" aria-label="Next month">&rsaquo;</button>
+                                    </div>
+                                    <div class="custom-datepicker-weekdays" aria-hidden="true">
+                                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                    </div>
+                                    <div class="custom-datepicker-grid" id="employee-history-start-cal-grid"></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label for="employee-history-end-date">End Date</label>
-                            <input type="date" id="employee-history-end-date">
+                            <label for="employee-history-end-datepicker-trigger">End Date</label>
+                            <input type="hidden" id="employee-history-end-date" value="">
+                            <div class="custom-datepicker" id="employee-history-end-datepicker" data-date-input="employee-history-end-date">
+                                <button type="button" class="custom-datepicker-trigger" id="employee-history-end-datepicker-trigger" aria-haspopup="dialog" aria-expanded="false">
+                                    <svg class="custom-datepicker-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    <span class="custom-datepicker-label" id="employee-history-end-datepicker-label">Select date</span>
+                                    <svg class="custom-datepicker-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                                <div class="custom-datepicker-panel hidden" id="employee-history-end-datepicker-panel" role="dialog" aria-label="Choose end date">
+                                    <div class="custom-datepicker-nav">
+                                        <button type="button" class="custom-datepicker-nav-btn" id="employee-history-end-cal-prev" aria-label="Previous month">&lsaquo;</button>
+                                        <div class="custom-datepicker-selects">
+                                            <select id="employee-history-end-cal-month" aria-label="Month"></select>
+                                            <select id="employee-history-end-cal-year" aria-label="Year"></select>
+                                        </div>
+                                        <button type="button" class="custom-datepicker-nav-btn" id="employee-history-end-cal-next" aria-label="Next month">&rsaquo;</button>
+                                    </div>
+                                    <div class="custom-datepicker-weekdays" aria-hidden="true">
+                                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                                    </div>
+                                    <div class="custom-datepicker-grid" id="employee-history-end-cal-grid"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
@@ -947,7 +989,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=10"></script>
+    <script src="script.js?v=11"></script>
 </body>
 </html>
 
