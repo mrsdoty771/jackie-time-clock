@@ -11,6 +11,13 @@ body {
     min-height: 100vh;
     color: #333;
     line-height: 1.6;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+html {
+    max-width: 100%;
+    overflow-x: hidden;
 }
 
 /* --- Page Visibility Logic --- */
@@ -848,19 +855,35 @@ body {
     justify-content: center;
     align-items: center;
     z-index: 9999;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 .modal-content, .popup-modal-content {
     background: white;
     padding: 40px;
     border-radius: 15px;
-    width: 90%;
+    width: 100%;
     max-width: 450px;
     max-height: 90vh;
     overflow-y: auto;
+    overflow-x: hidden;
     text-align: center;
     position: relative;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    box-sizing: border-box;
+}
+
+.popup-modal-content h2 {
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+}
+
+.popup-modal-content .btn {
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 #add-employee-modal .close-add-employee {
@@ -1101,6 +1124,14 @@ body {
 
 .timesheet-employee {
     margin-bottom: 28px;
+    max-width: 100%;
+}
+
+.timesheet-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .timesheet-employee-name {
@@ -1198,15 +1229,38 @@ body {
     }
     .timesheet-table {
         font-size: 11px;
+        table-layout: auto;
+        min-width: 520px;
+    }
+    .timesheet-table col.col-date,
+    .timesheet-table col.col-time,
+    .timesheet-table col.col-hours {
+        width: auto;
     }
     .timesheet-table th,
     .timesheet-table td {
-        padding: 4px 6px;
+        padding: 4px 3px;
+        font-size: 10px;
+    }
+    .timesheet-table th {
+        white-space: normal;
+        line-height: 1.15;
     }
 }
 
 /* --- Responsive Layout --- */
 @media (max-width: 600px) {
+    .container {
+        padding: 0 12px 24px;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .modal-content,
+    .popup-modal-content {
+        padding: 24px 16px;
+        width: 100%;
+        max-width: 100%;
+    }
     .punch-buttons {
         grid-template-columns: 1fr;
     }
@@ -1222,5 +1276,10 @@ body {
     .navbar-employee .navbar-center,
     .navbar-employee .navbar-right {
         justify-self: center;
+    }
+    #employee-records,
+    #report-results {
+        max-width: 100%;
+        overflow-x: hidden;
     }
 }

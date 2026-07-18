@@ -3577,6 +3577,7 @@ function buildEmployeeTimesheet(emp) {
     return `
         <section class="timesheet-employee">
             <h3 class="timesheet-employee-name">${escapeHtml(emp.employee_name)}</h3>
+            <div class="timesheet-scroll">
             <table class="timesheet-table">
                 <colgroup>
                     <col class="col-date">
@@ -3607,6 +3608,7 @@ function buildEmployeeTimesheet(emp) {
                     </tr>
                 </tfoot>
             </table>
+            </div>
         </section>
     `;
 }
