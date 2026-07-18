@@ -1,14 +1,10 @@
 // MVC Time Clock service worker.
 // Purpose: make the app installable ("Add to Home Screen") and load fast.
-// We use a network-first strategy so employees always get the latest app code,
-// and only fall back to cache when offline.
+// HTML always comes from the network when online so updates (like password eyes) show up.
+// Other assets use network-first with cache fallback.
 
-const CACHE_NAME = 'mvc-timeclock-v1';
+const CACHE_NAME = 'mvc-timeclock-v3';
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/script.js',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -34,13 +30,26 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
 
-  // Only handle GET; never cache API calls (they must always hit the server).
+  // Only handle GET; never cache API calls.
   if (req.method !== 'GET' || req.url.includes('/api/')) return;
+
+  // Always fetch fresh HTML/pages so UI updates are not stuck on an old Home Screen cache.
+  const isPage =
+    req.mode === 'navigate' ||
+    req.destination === 'document' ||
+    (req.headers.get('accept') || '').includes('text/html');
+  if (isPage) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => res)
+        .catch(() => caches.match('/index.html').then((c) => c || caches.match('/')))
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(req)
       .then((res) => {
-        // Cache a copy of successful same-origin responses for offline fallback.
         if (res && res.status === 200 && res.type === 'basic') {
           const copy = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});

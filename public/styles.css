@@ -597,27 +597,31 @@ body {
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     padding: 0;
     border: none;
-    background: none;
-    color: #666;
+    background: #f3f3f3;
+    color: #333;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 2;
+    z-index: 5;
     pointer-events: auto;
 }
 .password-toggle-btn:hover {
     color: #667eea;
-    background: rgba(102, 126, 234, 0.1);
+    background: rgba(102, 126, 234, 0.15);
 }
 /* Allow clicks on the icon to hit the button (no pointer-events: none so toggle works) */
 .password-toggle-btn .pwd-icon {
-    pointer-events: auto;
+    pointer-events: none;
+    display: block;
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
 }
 
 /* Logo upload (Company Settings) */

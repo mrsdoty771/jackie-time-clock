@@ -91,7 +91,10 @@ function consumeInstallQueryFlag() {
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+            // Pick up new SW (cache bumps) so Home Screen users get UI updates like password eyes.
+            reg.update().catch(() => {});
+        }).catch((err) => {
             console.log('Service worker registration failed:', err);
         });
     });
