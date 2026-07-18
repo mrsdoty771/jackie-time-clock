@@ -53,6 +53,7 @@ window.fetch = function (url) {
 function init() {
     registerServiceWorker();
     initPwaInstall();
+    initWindowControlsOverlay();
     loadCompanyNameForLogin();
     setTimeout(() => {
         const wantInstall = consumeInstallQueryFlag();
@@ -86,6 +87,20 @@ function consumeInstallQueryFlag() {
     } catch (_) {
         return false;
     }
+}
+
+function initWindowControlsOverlay() {
+    const titlebar = document.getElementById('app-titlebar');
+    const sync = () => {
+        const wco = navigator.windowControlsOverlay;
+        const visible = !!(wco && wco.visible);
+        document.body.classList.toggle('has-window-controls-overlay', visible);
+        if (titlebar) titlebar.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    };
+    sync();
+    try {
+        navigator.windowControlsOverlay?.addEventListener('geometrychange', sync);
+    } catch (_) {}
 }
 
 function registerServiceWorker() {
