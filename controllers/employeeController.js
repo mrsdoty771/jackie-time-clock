@@ -88,16 +88,17 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
   const { loginUrl } = await createLoginInvite(companyId, user._id);
   const companyLabel = await getCompanyDisplayName(companyId);
   const body = [
-    `${companyLabel} login`,
+    `${companyLabel}`,
     username ? `Username: ${username}` : '',
-    `Temporary password: ${tempPassword}`,
-    `Tap to sign in: ${loginUrl}`,
+    `Temp password: ${tempPassword}`,
+    `Tap to sign in and add the Time Clock app to your phone:`,
+    loginUrl,
   ]
     .filter(Boolean)
     .join('\n');
   const sms = await sendSmsToPhone(phone, body, companyId);
   if (!sms.ok) return sms;
-  return { ok: true, message: 'Login text sent.', loginUrl };
+  return { ok: true, message: 'App & login link text sent.', loginUrl };
 }
 function normalizeStatus(status) {
   if (!status) return 'active';

@@ -51,6 +51,8 @@ window.fetch = function (url) {
 
 // Initialize (run when DOM is ready; if app.js loads late, DOMContentLoaded may have already fired)
 function init() {
+    registerServiceWorker();
+    initPwaInstall();
     loadCompanyNameForLogin();
     setTimeout(() => {
         redeemLoginInviteFromUrl().then((handled) => {
@@ -59,6 +61,149 @@ function init() {
     }, 100);
     setupEventListeners();
     initializeWeekStart();
+}
+
+// ---------------------------------------------------------------------------
+// PWA: installable app + remembered device login
+// ---------------------------------------------------------------------------
+
+const SAVED_LOGIN_KEY = 'tc_saved_login';
+const INSTALL_DISMISS_KEY = 'tc_install_dismissed';
+let deferredInstallPrompt = null;
+
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+            console.log('Service worker registration failed:', err);
+        });
+    });
+}
+
+function isRunningAsInstalledApp() {
+    return (
+        window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+    ) || window.navigator.standalone === true;
+}
+
+function isIosDevice() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+}
+
+/** Remember this employee's login on THIS device so the home-screen icon opens ready to clock in. */
+function saveDeviceLogin(username, password) {
+    try {
+        if (!username || !password) return;
+        localStorage.setItem(SAVED_LOGIN_KEY, JSON.stringify({ username, password }));
+    } catch (_) {}
+}
+
+function getDeviceLogin() {
+    try {
+        const raw = localStorage.getItem(SAVED_LOGIN_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.username && parsed.password) return parsed;
+    } catch (_) {}
+    return null;
+}
+
+function clearDeviceLogin() {
+    try { localStorage.removeItem(SAVED_LOGIN_KEY); } catch (_) {}
+}
+
+/** Try logging in silently with credentials saved on this device (returns true if it logged in). */
+function attemptSilentLogin() {
+    const creds = getDeviceLogin();
+    if (!creds) return Promise.resolve(false);
+    return fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: creds.username, password: creds.password, companyId: getLoginCompanyId() }),
+        credentials: 'include',
+    })
+        .then((res) => res.json().catch(() => ({})))
+        .then((data) => {
+            if (data && data.success) {
+                currentUser = data.user;
+                if (data.must_change_password || currentUser.must_change_password) {
+                    showForcedPasswordChangeUI();
+                    return true;
+                }
+                showPage(data.user.role);
+                loadInitialData();
+                return true;
+            }
+            // Saved password no longer works (e.g. it was changed) — forget it.
+            clearDeviceLogin();
+            return false;
+        })
+        .catch(() => false);
+}
+
+function hideInstallModal() {
+    document.getElementById('install-app-modal')?.classList.add('hidden');
+}
+
+function initPwaInstall() {
+    const installBtn = document.getElementById('install-app-btn');
+    const laterBtn = document.getElementById('install-app-later');
+    const iosSteps = document.getElementById('install-modal-ios');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+    });
+
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        hideInstallModal();
+        try { localStorage.setItem(INSTALL_DISMISS_KEY, 'installed'); } catch (_) {}
+    });
+
+    installBtn?.addEventListener('click', async () => {
+        if (deferredInstallPrompt) {
+            deferredInstallPrompt.prompt();
+            const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+            deferredInstallPrompt = null;
+            if (choice && choice.outcome === 'accepted') hideInstallModal();
+            return;
+        }
+        // No system prompt available (iPhone): reveal the manual steps.
+        if (iosSteps) {
+            iosSteps.classList.remove('hidden');
+            installBtn.classList.add('hidden');
+            return;
+        }
+        hideInstallModal();
+    });
+
+    laterBtn?.addEventListener('click', () => {
+        try { localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now())); } catch (_) {}
+        hideInstallModal();
+    });
+}
+
+/** Show the "Add this app to your phone" prompt. Pass force=true right after opening the SMS link. */
+function maybeShowInstallPrompt(force) {
+    if (isRunningAsInstalledApp()) return; // already installed
+    const modal = document.getElementById('install-app-modal');
+    if (!modal) return;
+
+    if (!force) {
+        try {
+            const v = localStorage.getItem(INSTALL_DISMISS_KEY);
+            if (v === 'installed') return;
+            if (v && Date.now() - Number(v) < 3 * 24 * 60 * 60 * 1000) return; // snooze 3 days
+        } catch (_) {}
+    }
+
+    // iPhone can't trigger the system install dialog — show the manual steps.
+    if (isIosDevice() && !deferredInstallPrompt) {
+        document.getElementById('install-modal-ios')?.classList.remove('hidden');
+        document.getElementById('install-app-btn')?.classList.add('hidden');
+    }
+    modal.classList.remove('hidden');
 }
 
 /** SMS login link: /?invite=token — fetch credentials once to pre-fill login; user must sign in manually. */
@@ -87,6 +232,10 @@ async function redeemLoginInviteFromUrl() {
         if (idEl) idEl.value = data.username || '';
         if (pwdEl) pwdEl.value = data.password || '';
         if (errorDiv) errorDiv.textContent = '';
+        // Remember this login on the device so the home-screen icon opens ready to clock in.
+        saveDeviceLogin(data.username, data.password);
+        // First thing after tapping the SMS link: offer to add the app to their phone.
+        maybeShowInstallPrompt(true);
         return true;
     } catch (err) {
         console.error('Login invite error:', err);
@@ -228,7 +377,8 @@ function checkAuth() {
                     loadInitialData();
                 }
             } else {
-                showLoginPage();
+                // No active session — try the login saved on this device (installed app / returning phone).
+                attemptSilentLogin().then((ok) => { if (!ok) showLoginPage(); });
             }
         })
         .catch((err) => {
@@ -358,6 +508,8 @@ function showPage(role) {
             updateEmployeeNameDisplay();
             updatePunchButtonStates([]);
             loadEmployeeRecords();
+            // Gentle nudge for employees still using the browser to install the app.
+            maybeShowInstallPrompt(false);
         }
     });
 }
@@ -1029,6 +1181,9 @@ function handleForcedPasswordSubmit(e) {
                 return;
             }
             currentUser = { ...currentUser, must_change_password: false };
+            // Update the remembered device login with their newly chosen password.
+            const savedUser = currentUser?.username || getDeviceLogin()?.username;
+            if (savedUser) saveDeviceLogin(savedUser, newPassword);
             document.getElementById('forced-password-form').reset();
             showPage(currentUser.role);
             loadInitialData();
@@ -1151,6 +1306,8 @@ function handleLogin(e) {
         console.log('Login response:', data);
         if (data.success) {
             currentUser = data.user;
+            // Remember this login on the device for quick day-two access from the app icon.
+            saveDeviceLogin(username, password);
             if (data.must_change_password || currentUser.must_change_password) {
                 document.getElementById('login-form').reset();
                 errorDiv.textContent = '';
@@ -1179,6 +1336,8 @@ function handleLogin(e) {
 }
 
 function handleLogout() {
+    // Forget the saved device login so the app icon no longer auto-signs-in.
+    clearDeviceLogin();
     fetch(`${API_BASE}/logout`, { 
         method: 'POST',
         credentials: 'include'
@@ -2431,7 +2590,7 @@ function toggleEditEmpPasswordVisibility() {
     const canRevealStored = editEmpHasStoredPassword && editEmpStoredPassword;
     if (!value && !canRevealStored) {
         setEditEmployeeSendLoginMessage(
-            'Password is not stored for viewing. Use Create new password or Resend login credentials.',
+            'Password is not stored for viewing. Use Create new password or Resend App & Login Link.',
             true
         );
         return;
@@ -2979,7 +3138,7 @@ function updateAddEmployeeSendLoginTextButton(phone) {
     if (hasPhone) {
         btn.removeAttribute('title');
     } else {
-        btn.title = 'Add a phone number to send a login text. Edit the employee later to add one.';
+        btn.title = 'Add a phone number to send the app & login link. Edit the employee later to add one.';
     }
 }
 
@@ -3041,7 +3200,7 @@ function updateEditEmployeeSendLoginTextButton(phone) {
     if (hasPhone) {
         btn.removeAttribute('title');
     } else {
-        btn.title = 'Add a phone number and save the employee to send login credentials by text.';
+        btn.title = 'Add a phone number and save the employee to send the app & login link by text.';
     }
 }
 
@@ -3055,7 +3214,7 @@ function sendEditEmployeeLoginText() {
     if (btn?.disabled) return;
     const phone = document.getElementById('edit-emp-phone')?.value || '';
     if (btn) btn.disabled = true;
-    setEditEmployeeSendLoginMessage('Sending login text…', false);
+    setEditEmployeeSendLoginMessage('Sending app & login link…', false);
     fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3066,13 +3225,13 @@ function sendEditEmployeeLoginText() {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
             if (res.ok && data.success) {
-                setEditEmployeeSendLoginMessage(data.message || 'Login text sent.', false);
+                setEditEmployeeSendLoginMessage(data.message || 'App & login link sent.', false);
             } else {
-                setEditEmployeeSendLoginMessage(data.error || 'Failed to send login text.', true);
+                setEditEmployeeSendLoginMessage(data.error || 'Failed to send app & login link.', true);
             }
         })
         .catch(() => {
-            setEditEmployeeSendLoginMessage('Could not send login text. Check your connection and try again.', true);
+            setEditEmployeeSendLoginMessage('Could not send app & login link. Check your connection and try again.', true);
         })
         .finally(() => {
             updateEditEmployeeSendLoginTextButton(phone);
@@ -3089,7 +3248,7 @@ function sendAddEmployeeLoginText() {
     const btn = document.getElementById('add-employee-send-login-text-btn');
     if (btn?.disabled) return;
     if (btn) btn.disabled = true;
-    setAddEmployeeSuccessMessage('Sending login text…', false);
+    setAddEmployeeSuccessMessage('Sending app & login link…', false);
     fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3100,13 +3259,13 @@ function sendAddEmployeeLoginText() {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
             if (res.ok && data.success) {
-                setAddEmployeeSuccessMessage(data.message || 'Login text sent.', false);
+                setAddEmployeeSuccessMessage(data.message || 'App & login link sent.', false);
             } else {
-                setAddEmployeeSuccessMessage(data.error || 'Failed to send login text.', true);
+                setAddEmployeeSuccessMessage(data.error || 'Failed to send app & login link.', true);
             }
         })
         .catch(() => {
-            setAddEmployeeSuccessMessage('Could not send login text. Check your connection and try again.', true);
+            setAddEmployeeSuccessMessage('Could not send app & login link. Check your connection and try again.', true);
         })
         .finally(() => {
             updateAddEmployeeSendLoginTextButton(modal?.dataset.phone || '');

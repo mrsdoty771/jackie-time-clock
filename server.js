@@ -50,7 +50,8 @@ app.use(
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000,
+      // 30 days so the installed home-screen app stays logged in day-to-day.
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     },
     name: 'timeclock.sid',
   })

@@ -23,6 +23,89 @@ body {
     display: none !important;
 }
 
+/* --- Add-to-Home-Screen (PWA install) prompt --- */
+.install-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.install-modal-content {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px 24px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.install-modal-icon {
+    width: 84px;
+    height: 84px;
+    border-radius: 18px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+    margin-bottom: 14px;
+}
+
+.install-modal-content h2 {
+    font-size: 20px;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.install-modal-content p {
+    color: #555;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+.install-ios-steps {
+    text-align: left;
+    background: #f5f6ff;
+    border: 1px solid #e2e5ff;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 12px 0;
+}
+
+.install-ios-steps ol {
+    margin: 8px 0 8px 18px;
+    color: #444;
+    font-size: 14px;
+}
+
+.install-ios-steps li {
+    margin-bottom: 6px;
+}
+
+.install-ios-note {
+    font-size: 13px;
+    color: #777;
+}
+
+.install-ios-share {
+    display: inline-block;
+    font-weight: 700;
+    color: #667eea;
+}
+
+.install-modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.install-modal-actions .btn {
+    width: 100%;
+}
+
 /* --- Login Page --- */
 .login-container {
     max-width: 450px;

@@ -2,9 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MVC Time Clock</title>
-    <link rel="stylesheet" href="styles.css?v=12">
+
+    <!-- PWA: installable "Add to Home Screen" app -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MVC Time Clock">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+
+    <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
     <div id="login-page" class="page">
@@ -779,7 +790,7 @@
             </div>
             <div id="add-employee-success-panel" class="hidden">
                 <h3>Employee Added Successfully!</h3>
-                <p style="color: #666; font-size: 14px; margin: 0 0 16px 0;">Share these login credentials with the employee. They must create a new password on first sign-in.</p>
+                <p style="color: #666; font-size: 14px; margin: 0 0 16px 0;">Share these credentials, or text the app &amp; login link. They must create a new password on first sign-in, then add the app to their phone.</p>
                 <div class="add-employee-credentials">
                     <div class="add-employee-credential-row">
                         <span class="add-employee-credential-label">Username</span>
@@ -793,7 +804,7 @@
                 <div id="add-employee-success-message" style="margin: 12px 0; font-size: 14px;"></div>
                 <div class="form-actions add-employee-success-actions">
                     <button type="button" class="btn btn-secondary" id="add-employee-copy-credentials-btn">Copy Credentials</button>
-                    <button type="button" class="btn btn-secondary" id="add-employee-send-login-text-btn">Send Login Text</button>
+                    <button type="button" class="btn btn-secondary" id="add-employee-send-login-text-btn">Send App &amp; Login Link</button>
                 </div>
                 <div class="form-actions" style="margin-top: 8px;">
                     <button type="button" class="btn btn-primary" id="add-employee-done-btn">Done</button>
@@ -833,7 +844,8 @@
                     <input type="tel" id="edit-emp-phone">
                 </div>
                 <div class="form-group edit-employee-login-actions">
-                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn">Resend login credentials</button>
+                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn">Resend App &amp; Login Link</button>
+                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Texts a fresh link so they can sign in and add the Time Clock app to their phone.</small>
                     <div id="edit-employee-send-login-message" class="edit-employee-send-login-message" aria-live="polite"></div>
                 </div>
                 <div class="form-group">
@@ -1010,7 +1022,29 @@
         </div>
     </div>
 
-    <script src="script.js?v=13"></script>
+    <!-- Add-to-Home-Screen (PWA install) prompt -->
+    <div id="install-app-modal" class="install-modal hidden">
+        <div class="install-modal-content">
+            <img src="/icons/icon-192.png" alt="MVC Time Clock" class="install-modal-icon">
+            <h2>Add MVC Time Clock to your phone</h2>
+            <p id="install-modal-text">Install the app so tomorrow you can tap one icon and clock in — no typing.</p>
+            <div id="install-modal-ios" class="install-ios-steps hidden">
+                <p>To add the app on your iPhone:</p>
+                <ol>
+                    <li>Tap the <strong>Share</strong> button <span class="install-ios-share">&#x2191;</span> at the bottom of Safari.</li>
+                    <li>Choose <strong>Add to Home Screen</strong>.</li>
+                    <li>Tap <strong>Add</strong>.</li>
+                </ol>
+                <p class="install-ios-note">If you don't see it, open this page in <strong>Safari</strong> first.</p>
+            </div>
+            <div class="install-modal-actions">
+                <button type="button" id="install-app-btn" class="btn btn-primary">Add to my phone</button>
+                <button type="button" id="install-app-later" class="btn btn-secondary">Maybe later</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=15"></script>
 </body>
 </html>
 
