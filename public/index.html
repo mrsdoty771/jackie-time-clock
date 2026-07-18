@@ -76,7 +76,8 @@
             </div>
             <div id="forced-password-section" class="hidden">
                 <h2 class="forced-password-title">Please set new password</h2>
-                <p class="forced-password-intro">For security, you must choose a new password before using the time clock.</p>
+                <p class="forced-password-intro" id="forced-password-intro">For security, you must choose a new password before using the time clock.</p>
+                <p id="forced-password-username" class="forced-password-username hidden" style="margin: 0 0 12px; color: #555; font-size: 14px;"></p>
                 <form id="forced-password-form">
                     <div class="form-group">
                         <label for="forced-new-password">New password</label>
@@ -863,8 +864,8 @@
                 <div class="form-group edit-employee-login-actions">
                     <button type="button" class="btn btn-secondary" id="edit-employee-send-app-link-btn">Send Home Screen Link</button>
                     <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Texts a link to add a Time Clock shortcut on their phone. Does <strong>not</strong> change their password.</small>
-                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn" style="margin-top: 10px;">Reset Password &amp; Text Login</button>
-                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Resets temp password to password123 and texts a login link. They must change it on next sign-in.</small>
+                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn" style="margin-top: 10px;">Reset Password &amp; Text Link</button>
+                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Invalidates their current password and texts their username plus a link to choose a new one.</small>
                     <div id="edit-employee-send-login-message" class="edit-employee-send-login-message" aria-live="polite"></div>
                 </div>
                 <div class="form-group">
@@ -1077,7 +1078,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=23"></script>
+    <script src="script.js?v=24"></script>
 </body>
 </html>
 

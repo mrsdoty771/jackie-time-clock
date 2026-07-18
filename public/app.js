@@ -58,9 +58,15 @@ function init() {
     loadCompanyNameForLogin();
     setTimeout(() => {
         const wantInstall = consumeInstallQueryFlag();
-        redeemLoginInviteFromUrl().then((handled) => {
-            if (!handled) checkAuth();
-            if (wantInstall) maybeShowInstallPrompt(true);
+        redeemPasswordResetFromUrl().then((resetHandled) => {
+            if (resetHandled) {
+                if (wantInstall) maybeShowInstallPrompt(true);
+                return;
+            }
+            redeemLoginInviteFromUrl().then((handled) => {
+                if (!handled) checkAuth();
+                if (wantInstall) maybeShowInstallPrompt(true);
+            });
         });
     }, 100);
     setupEventListeners();
@@ -336,6 +342,56 @@ async function redeemLoginInviteFromUrl() {
     }
 }
 
+/** Manager SMS reset link: /?reset=token — open set-new-password form (no temp password in the text). */
+let pendingPasswordResetToken = null;
+let pendingPasswordResetUsername = '';
+
+async function redeemPasswordResetFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset');
+    if (!token) return false;
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    const errorDiv = document.getElementById('login-error');
+    try {
+        const res = await fetch(`${API_BASE}/password-reset/${encodeURIComponent(token)}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+            showLoginPage();
+            if (errorDiv) {
+                errorDiv.textContent = data.error || 'This reset link is invalid or has expired.';
+                errorDiv.style.color = 'red';
+            }
+            return true;
+        }
+
+        pendingPasswordResetToken = token;
+        pendingPasswordResetUsername = data.username || '';
+        if (data.companyId) {
+            try {
+                const companyInput = document.getElementById('login-company-id');
+                if (companyInput && !companyInput.value) companyInput.value = data.companyId;
+            } catch (_) {}
+        }
+        const idEl = document.getElementById('login-identifier');
+        if (idEl) idEl.value = pendingPasswordResetUsername;
+        showForcedPasswordChangeUI({
+            fromResetLink: true,
+            username: pendingPasswordResetUsername,
+        });
+        return true;
+    } catch (err) {
+        console.error('Password reset link error:', err);
+        showLoginPage();
+        if (errorDiv) {
+            errorDiv.textContent = 'Could not open reset link. Ask your manager to send a new one.';
+            errorDiv.style.color = 'red';
+        }
+        return true;
+    }
+}
+
 
 
 function loadCompanyNameForLogin() {
@@ -480,9 +536,20 @@ function hideForcedPasswordChangeUI() {
     document.getElementById('standard-login-flow')?.classList.remove('hidden');
     const forcedMsg = document.getElementById('forced-password-message');
     if (forcedMsg) forcedMsg.textContent = '';
+    const userHint = document.getElementById('forced-password-username');
+    if (userHint) {
+        userHint.textContent = '';
+        userHint.classList.add('hidden');
+    }
+    const intro = document.getElementById('forced-password-intro');
+    if (intro) {
+        intro.textContent = 'For security, you must choose a new password before using the time clock.';
+    }
 }
 
-function showForcedPasswordChangeUI() {
+function showForcedPasswordChangeUI(opts) {
+    const fromResetLink = !!(opts && opts.fromResetLink);
+    const username = (opts && opts.username) || '';
     document.getElementById('employee-page')?.classList.add('hidden');
     document.getElementById('manager-page')?.classList.add('hidden');
     document.getElementById('login-page')?.classList.remove('hidden');
@@ -490,6 +557,22 @@ function showForcedPasswordChangeUI() {
     document.getElementById('forced-password-section')?.classList.remove('hidden');
     const err = document.getElementById('login-error');
     if (err) err.textContent = '';
+    const intro = document.getElementById('forced-password-intro');
+    if (intro) {
+        intro.textContent = fromResetLink
+            ? 'Choose a new password for your Time Clock login.'
+            : 'For security, you must choose a new password before using the time clock.';
+    }
+    const userHint = document.getElementById('forced-password-username');
+    if (userHint) {
+        if (username) {
+            userHint.textContent = `Username: ${username}`;
+            userHint.classList.remove('hidden');
+        } else {
+            userHint.textContent = '';
+            userHint.classList.add('hidden');
+        }
+    }
     const form = document.getElementById('forced-password-form');
     form?.reset();
 }
@@ -937,7 +1020,7 @@ function setupEventListeners() {
     document.getElementById('add-employee-copy-credentials-btn')?.addEventListener('click', copyAddEmployeeCredentials);
     document.getElementById('add-employee-send-login-text-btn')?.addEventListener('click', sendAddEmployeeLoginText);
     document.getElementById('edit-employee-send-app-link-btn')?.addEventListener('click', () => sendEditEmployeeText('app'));
-    document.getElementById('edit-employee-send-login-text-btn')?.addEventListener('click', () => sendEditEmployeeText('login'));
+    document.getElementById('edit-employee-send-login-text-btn')?.addEventListener('click', () => sendEditEmployeeText('reset'));
 
     // Grant manager rights modal
     document.getElementById('confirm-grant-manager-btn')?.addEventListener('click', handleConfirmGrantManager);
@@ -1264,6 +1347,44 @@ function handleForcedPasswordSubmit(e) {
     }
 
     msgEl.textContent = '';
+
+    if (pendingPasswordResetToken) {
+        const token = pendingPasswordResetToken;
+        fetch(`${API_BASE}/password-reset/${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newPassword, confirmPassword }),
+        })
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    msgEl.textContent = data.error || 'Could not update password.';
+                    msgEl.style.color = 'red';
+                    return;
+                }
+                pendingPasswordResetToken = null;
+                const username = data.username || pendingPasswordResetUsername || '';
+                pendingPasswordResetUsername = '';
+                document.getElementById('forced-password-form').reset();
+                showLoginPage();
+                const idEl = document.getElementById('login-identifier');
+                const pwdEl = document.getElementById('password');
+                if (idEl) idEl.value = username;
+                if (pwdEl) pwdEl.value = '';
+                if (username) saveDeviceLogin(username, newPassword);
+                const errorDiv = document.getElementById('login-error');
+                if (errorDiv) {
+                    errorDiv.textContent = 'Password saved. Sign in with your new password.';
+                    errorDiv.style.color = '#2e7d32';
+                }
+            })
+            .catch((err) => {
+                msgEl.textContent = err.message || 'Something went wrong. Please try again.';
+                msgEl.style.color = 'red';
+            });
+        return;
+    }
+
     fetch(`${API_BASE}/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -2687,7 +2808,7 @@ function toggleEditEmpPasswordVisibility() {
     const canRevealStored = editEmpHasStoredPassword && editEmpStoredPassword;
     if (!value && !canRevealStored) {
         setEditEmployeeSendLoginMessage(
-            'Password is not stored for viewing. Use Create new password or Reset Password & Text Login.',
+            'Password is not stored for viewing. Use Create new password or Reset Password & Text Link.',
             true
         );
         return;
@@ -3308,30 +3429,34 @@ function sendEditEmployeeText(mode) {
         return;
     }
     const isApp = mode === 'app';
+    const isReset = mode === 'reset';
     const btn = document.getElementById(isApp ? 'edit-employee-send-app-link-btn' : 'edit-employee-send-login-text-btn');
     if (btn?.disabled) return;
     const phone = document.getElementById('edit-emp-phone')?.value || '';
     const otherBtn = document.getElementById(isApp ? 'edit-employee-send-login-text-btn' : 'edit-employee-send-app-link-btn');
     if (btn) btn.disabled = true;
     if (otherBtn) otherBtn.disabled = true;
-    setEditEmployeeSendLoginMessage(isApp ? 'Sending Home Screen link…' : 'Sending login password text…', false);
+    setEditEmployeeSendLoginMessage(
+        isApp ? 'Sending Home Screen link…' : 'Sending password reset link…',
+        false
+    );
     fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ mode: isApp ? 'app' : 'login' }),
+        body: JSON.stringify({ mode: isApp ? 'app' : (isReset ? 'reset' : 'login') }),
     })
         .then(async (res) => {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
             if (res.ok && data.success) {
                 setEditEmployeeSendLoginMessage(
-                    data.message || (isApp ? 'Home Screen link sent.' : 'Login password text sent.'),
+                    data.message || (isApp ? 'Home Screen link sent.' : 'Password reset link sent.'),
                     false
                 );
             } else {
                 setEditEmployeeSendLoginMessage(
-                    data.error || (isApp ? 'Failed to send Home Screen link.' : 'Failed to send login text.'),
+                    data.error || (isApp ? 'Failed to send Home Screen link.' : 'Failed to send reset link.'),
                     true
                 );
             }

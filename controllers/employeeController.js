@@ -6,6 +6,7 @@ const User = require('../models/User');
 const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
 const { createLoginInvite, getPublicBaseUrl, BASE_URL_ENV_HINT } = require('../utils/loginInvite');
+const { createPasswordReset } = require('../utils/passwordReset');
 const { sendSmsToPhone } = require('../utils/sms');
 const {
   allocateUniqueLoginUsername,
@@ -31,7 +32,12 @@ async function getCompanyDisplayName(companyId) {
   return (settings && settings.companyName) ? String(settings.companyName).trim() : 'MVC Time Clock';
 }
 
-async function sendLoginTextForEmployeeUser(companyId, employee, user, { regeneratePassword = false, appOnly = false } = {}) {
+async function sendLoginTextForEmployeeUser(
+  companyId,
+  employee,
+  user,
+  { regeneratePassword = false, appOnly = false, passwordResetLink = false } = {}
+) {
   const phone = employee.phone ? String(employee.phone).trim() : '';
   if (!phone) {
     return { ok: false, error: 'Employee has no phone number on file.' };
@@ -57,6 +63,31 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
     const sms = await sendSmsToPhone(phone, body, companyId);
     if (!sms.ok) return sms;
     return { ok: true, message: 'Home Screen link text sent.', loginUrl: appUrl };
+  }
+
+  // Manager reset: invalidate password and text username + one-time set-password link.
+  if (passwordResetLink) {
+    const previousUsername = String(user.username || '').trim();
+    const username = await ensureEmployeeLoginUsername(companyId, employee, user, { save: false });
+    const randomSecret = crypto.randomBytes(32).toString('hex');
+    user.password = bcrypt.hashSync(randomSecret, 10);
+    user.mustChangePassword = false;
+    if (username !== previousUsername) user.username = username;
+    await user.save();
+    await User.updateOne({ _id: user._id, companyId }, { $unset: { passwordDisplayEncrypted: 1 } });
+
+    const { resetUrl } = await createPasswordReset(companyId, user._id);
+    const body = [
+      companyLabel,
+      username ? `Username: ${username}` : '',
+      'Reset your password (link expires in 24 hours):',
+      resetUrl,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const sms = await sendSmsToPhone(phone, body, companyId);
+    if (!sms.ok) return sms;
+    return { ok: true, message: 'Password reset link text sent.', resetUrl };
   }
 
   let tempPassword = '';
@@ -408,13 +439,17 @@ async function createEmployee(req, res) {
 }
 
 // POST /api/employees/:id/send-login-text (manager only)
-// body.mode: 'app' = install link only (no password change); 'login' (default) = reset temp password + login invite
+// body.mode:
+//   'app' = Home Screen link only (no password change)
+//   'reset' = invalidate password + text username + set-password link
+//   'login' (default) = temp password + login invite (new-hire flow)
 async function sendEmployeeLoginText(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const companyId = req.companyId;
   const { id } = req.params;
   const mode = String(req.body?.mode || 'login').trim().toLowerCase();
   const appOnly = mode === 'app';
+  const passwordResetLink = mode === 'reset';
 
   try {
     const employee = await Employee.findOne({ _id: id, companyId }).lean();
@@ -431,8 +466,9 @@ async function sendEmployeeLoginText(req, res) {
     }
 
     const smsResult = await sendLoginTextForEmployeeUser(companyId, employee, user, {
-      regeneratePassword: !appOnly,
+      regeneratePassword: !appOnly && !passwordResetLink,
       appOnly,
+      passwordResetLink,
     });
     if (!smsResult.ok) return res.status(400).json({ error: smsResult.error });
     return res.json({ success: true, message: smsResult.message });

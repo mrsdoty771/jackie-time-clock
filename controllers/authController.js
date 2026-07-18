@@ -8,6 +8,7 @@ const Employee = require('../models/Employee');
 const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
 const { redeemLoginInvite } = require('../utils/loginInvite');
+const { peekPasswordReset, consumePasswordReset } = require('../utils/passwordReset');
 const { ensureEmployeeLoginUsername } = require('../utils/loginUsername');
 
 function normalizeCompanyId(raw) {
@@ -642,6 +643,100 @@ async function getLoginInvite(req, res) {
   }
 }
 
+// GET /api/password-reset/:token — public; validate reset link (does not consume)
+async function getPasswordReset(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const token = String(req.params.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'Invalid reset link' });
+
+  try {
+    const reset = await peekPasswordReset(token);
+    if (!reset) return res.status(404).json({ error: 'This reset link is invalid or has expired.' });
+
+    const user = await User.findOne({
+      _id: reset.userId,
+      companyId: reset.companyId,
+      role: { $in: ['employee', 'manager', 'super-admin'] },
+    }).select('username employeeId');
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+
+    let employee = null;
+    if (user.employeeId) {
+      employee = await Employee.findOne({ _id: user.employeeId, companyId: reset.companyId })
+        .select('active name employeeNumber')
+        .lean();
+      if (employee && !employee.active) {
+        return res.status(403).json({ error: 'This employee account is inactive.' });
+      }
+    }
+
+    const loginUsername = employee
+      ? await ensureEmployeeLoginUsername(reset.companyId, employee, user, { save: true })
+      : String(user.username || '').trim();
+
+    return res.json({
+      companyId: reset.companyId,
+      username: loginUsername,
+    });
+  } catch (err) {
+    console.error('getPasswordReset error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
+// POST /api/password-reset/:token — public; set new password via SMS reset link
+async function completePasswordReset(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  const token = String(req.params.token || '').trim();
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const newPassword = String(body.newPassword || '').trim();
+  const confirmPassword = String(body.confirmPassword || '').trim();
+
+  if (!token) return res.status(400).json({ error: 'Invalid reset link' });
+  if (!newPassword) return res.status(400).json({ error: 'New password is required' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (newPassword !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
+
+  try {
+    const reset = await consumePasswordReset(token);
+    if (!reset) return res.status(404).json({ error: 'This reset link is invalid or has expired.' });
+
+    const user = await User.findOne({
+      _id: reset.userId,
+      companyId: reset.companyId,
+      role: { $in: ['employee', 'manager', 'super-admin'] },
+    });
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+
+    if (user.employeeId) {
+      const employee = await Employee.findOne({ _id: user.employeeId, companyId: reset.companyId })
+        .select('active')
+        .lean();
+      if (employee && !employee.active) {
+        return res.status(403).json({ error: 'This employee account is inactive.' });
+      }
+    }
+
+    user.password = bcrypt.hashSync(newPassword, 10);
+    user.mustChangePassword = false;
+    await user.save();
+    await User.updateOne(
+      { _id: user._id, companyId: reset.companyId },
+      { $unset: { passwordDisplayEncrypted: 1 } }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Password updated. You can log in with your new password.',
+      companyId: reset.companyId,
+      username: String(user.username || '').trim(),
+    });
+  } catch (err) {
+    console.error('completePasswordReset error:', err);
+    return res.status(500).json({ error: 'Server error' });
+  }
+}
+
 module.exports = {
   login,
   logout,
@@ -652,5 +747,7 @@ module.exports = {
   getLoginOptions,
   resetPassword,
   getLoginInvite,
+  getPasswordReset,
+  completePasswordReset,
 };
 
