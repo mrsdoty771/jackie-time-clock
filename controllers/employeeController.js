@@ -46,18 +46,19 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
 
   const companyLabel = await getCompanyDisplayName(companyId);
 
-  // App-only: install link, no password change.
+  // Home-screen shortcut only — no password change, no app-store download.
   if (appOnly) {
     const appUrl = `${publicBaseUrl}/?install=1`;
     const body = [
       companyLabel,
-      'Add the Time Clock app to your phone.',
-      'Then sign in with your usual username and password.',
+      'Add Time Clock to your Home Screen (a shortcut — not an app download).',
+      'Open this link in Chrome, then tap Menu (⋮) → Add to Home screen:',
       appUrl,
+      'Then sign in with your usual username and password.',
     ].join('\n');
     const sms = await sendSmsToPhone(phone, body, companyId);
     if (!sms.ok) return sms;
-    return { ok: true, message: 'App link text sent.', loginUrl: appUrl };
+    return { ok: true, message: 'Home Screen link text sent.', loginUrl: appUrl };
   }
 
   let tempPassword = '';

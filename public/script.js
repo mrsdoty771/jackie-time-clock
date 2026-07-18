@@ -3,7 +3,7 @@
 // but the actual application logic lives in `app.js`.
 (function loadAppJs() {
   const s = document.createElement('script');
-  s.src = 'app.js?v=22';
+  s.src = 'app.js?v=23';
   s.defer = true;
   document.head.appendChild(s);
 })();

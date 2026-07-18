@@ -15,7 +15,7 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/icon-192.png">
 
-    <link rel="stylesheet" href="styles.css?v=13">
+    <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
     <div id="login-page" class="page">
@@ -844,8 +844,8 @@
                     <input type="tel" id="edit-emp-phone">
                 </div>
                 <div class="form-group edit-employee-login-actions">
-                    <button type="button" class="btn btn-secondary" id="edit-employee-send-app-link-btn">Send App Link</button>
-                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Texts a link to add the Time Clock app. Does <strong>not</strong> change their password.</small>
+                    <button type="button" class="btn btn-secondary" id="edit-employee-send-app-link-btn">Send Home Screen Link</button>
+                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Texts a link to add a Time Clock shortcut on their phone. Does <strong>not</strong> change their password.</small>
                     <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn" style="margin-top: 10px;">Reset Password &amp; Text Login</button>
                     <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Resets temp password to password123 and texts a login link. They must change it on next sign-in.</small>
                     <div id="edit-employee-send-login-message" class="edit-employee-send-login-message" aria-live="polite"></div>
@@ -1024,29 +1024,43 @@
         </div>
     </div>
 
-    <!-- Add-to-Home-Screen (PWA install) prompt -->
+    <!-- Add-to-Home-Screen shortcut prompt (not an app-store download) -->
     <div id="install-app-modal" class="install-modal hidden">
         <div class="install-modal-content">
             <img src="/icons/icon-192.png" alt="MVC Time Clock" class="install-modal-icon">
-            <h2>Add MVC Time Clock to your phone</h2>
-            <p id="install-modal-text">Install the app so tomorrow you can tap one icon and clock in — no typing.</p>
-            <div id="install-modal-ios" class="install-ios-steps hidden">
-                <p>To add the app on your iPhone:</p>
+            <h2>Add Time Clock to your Home Screen</h2>
+            <p id="install-modal-text">This puts a shortcut icon on your phone so you can open the time clock with one tap. It is <strong>not</strong> an App Store / Play Store download — nothing will appear in Downloads.</p>
+
+            <div id="install-modal-android" class="install-steps">
+                <p><strong>On Samsung / Android (use Chrome):</strong></p>
                 <ol>
-                    <li>Tap the <strong>Share</strong> button <span class="install-ios-share">&#x2191;</span> at the bottom of Safari.</li>
+                    <li>If this opened inside Messages, tap the menu and choose <strong>Open in Chrome</strong>.</li>
+                    <li>Tap the <strong>⋮</strong> menu (top right in Chrome).</li>
+                    <li>Tap <strong>Add to Home screen</strong> (or <strong>Install app</strong>).</li>
+                    <li>Tap <strong>Add</strong>.</li>
+                    <li>Find the <strong>Time Clock</strong> icon on your home screen or in your app list — <em>not</em> in Downloads.</li>
+                </ol>
+            </div>
+
+            <div id="install-modal-ios" class="install-steps hidden">
+                <p><strong>On iPhone (use Safari):</strong></p>
+                <ol>
+                    <li>Open this page in <strong>Safari</strong> (not inside Messages).</li>
+                    <li>Tap the <strong>Share</strong> button <span class="install-ios-share">&#x2191;</span>.</li>
                     <li>Choose <strong>Add to Home Screen</strong>.</li>
                     <li>Tap <strong>Add</strong>.</li>
                 </ol>
-                <p class="install-ios-note">If you don't see it, open this page in <strong>Safari</strong> first.</p>
             </div>
+
             <div class="install-modal-actions">
-                <button type="button" id="install-app-btn" class="btn btn-primary">Add to my phone</button>
+                <button type="button" id="install-app-btn" class="btn btn-primary hidden">Quick add (Chrome)</button>
+                <button type="button" id="install-app-done" class="btn btn-primary">Got it</button>
                 <button type="button" id="install-app-later" class="btn btn-secondary">Maybe later</button>
             </div>
         </div>
     </div>
 
-    <script src="script.js?v=16"></script>
+    <script src="script.js?v=17"></script>
 </body>
 </html>
 

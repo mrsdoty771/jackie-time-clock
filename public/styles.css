@@ -74,12 +74,23 @@ body {
     margin: 12px 0;
 }
 
+.install-steps {
+    text-align: left;
+    background: #f5f6ff;
+    border: 1px solid #e2e5ff;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 12px 0;
+}
+
+.install-steps ol,
 .install-ios-steps ol {
     margin: 8px 0 8px 18px;
     color: #444;
     font-size: 14px;
 }
 
+.install-steps li,
 .install-ios-steps li {
     margin-bottom: 6px;
 }

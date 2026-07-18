@@ -165,11 +165,15 @@ function hideInstallModal() {
 function initPwaInstall() {
     const installBtn = document.getElementById('install-app-btn');
     const laterBtn = document.getElementById('install-app-later');
+    const doneBtn = document.getElementById('install-app-done');
+    const androidSteps = document.getElementById('install-modal-android');
     const iosSteps = document.getElementById('install-modal-ios');
 
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         deferredInstallPrompt = e;
+        // Optional one-tap for Chrome — steps stay the main path (Samsung "Downloading" is confusing).
+        if (!isIosDevice()) installBtn?.classList.remove('hidden');
     });
 
     window.addEventListener('appinstalled', () => {
@@ -179,31 +183,25 @@ function initPwaInstall() {
     });
 
     installBtn?.addEventListener('click', async () => {
-        if (deferredInstallPrompt) {
-            deferredInstallPrompt.prompt();
-            const choice = await deferredInstallPrompt.userChoice.catch(() => null);
-            deferredInstallPrompt = null;
-            if (choice && choice.outcome === 'accepted') hideInstallModal();
-            return;
-        }
-        // No system prompt available (iPhone): reveal the manual steps.
-        if (iosSteps) {
-            iosSteps.classList.remove('hidden');
-            installBtn.classList.add('hidden');
-            return;
-        }
-        hideInstallModal();
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+        deferredInstallPrompt = null;
+        installBtn.classList.add('hidden');
+        if (choice && choice.outcome === 'accepted') hideInstallModal();
     });
 
-    laterBtn?.addEventListener('click', () => {
+    const dismiss = () => {
         try { localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now())); } catch (_) {}
         hideInstallModal();
-    });
+    };
+    doneBtn?.addEventListener('click', dismiss);
+    laterBtn?.addEventListener('click', dismiss);
 }
 
-/** Show the "Add this app to your phone" prompt. Pass force=true right after opening the SMS link. */
+/** Show Home Screen instructions. Pass force=true right after opening the SMS link. */
 function maybeShowInstallPrompt(force) {
-    if (isRunningAsInstalledApp()) return; // already installed
+    if (isRunningAsInstalledApp()) return;
     const modal = document.getElementById('install-app-modal');
     if (!modal) return;
 
@@ -211,14 +209,22 @@ function maybeShowInstallPrompt(force) {
         try {
             const v = localStorage.getItem(INSTALL_DISMISS_KEY);
             if (v === 'installed') return;
-            if (v && Date.now() - Number(v) < 3 * 24 * 60 * 60 * 1000) return; // snooze 3 days
+            if (v && Date.now() - Number(v) < 3 * 24 * 60 * 60 * 1000) return;
         } catch (_) {}
     }
 
-    // iPhone can't trigger the system install dialog — show the manual steps.
-    if (isIosDevice() && !deferredInstallPrompt) {
-        document.getElementById('install-modal-ios')?.classList.remove('hidden');
-        document.getElementById('install-app-btn')?.classList.add('hidden');
+    const androidSteps = document.getElementById('install-modal-android');
+    const iosSteps = document.getElementById('install-modal-ios');
+    const quickAdd = document.getElementById('install-app-btn');
+    if (isIosDevice()) {
+        androidSteps?.classList.add('hidden');
+        iosSteps?.classList.remove('hidden');
+        quickAdd?.classList.add('hidden');
+    } else {
+        iosSteps?.classList.add('hidden');
+        androidSteps?.classList.remove('hidden');
+        if (deferredInstallPrompt) quickAdd?.classList.remove('hidden');
+        else quickAdd?.classList.add('hidden');
     }
     modal.classList.remove('hidden');
 }
@@ -3235,7 +3241,7 @@ function sendEditEmployeeText(mode) {
     const otherBtn = document.getElementById(isApp ? 'edit-employee-send-login-text-btn' : 'edit-employee-send-app-link-btn');
     if (btn) btn.disabled = true;
     if (otherBtn) otherBtn.disabled = true;
-    setEditEmployeeSendLoginMessage(isApp ? 'Sending app link…' : 'Sending login password text…', false);
+    setEditEmployeeSendLoginMessage(isApp ? 'Sending Home Screen link…' : 'Sending login password text…', false);
     fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3247,12 +3253,12 @@ function sendEditEmployeeText(mode) {
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
             if (res.ok && data.success) {
                 setEditEmployeeSendLoginMessage(
-                    data.message || (isApp ? 'App link sent.' : 'Login password text sent.'),
+                    data.message || (isApp ? 'Home Screen link sent.' : 'Login password text sent.'),
                     false
                 );
             } else {
                 setEditEmployeeSendLoginMessage(
-                    data.error || (isApp ? 'Failed to send app link.' : 'Failed to send login text.'),
+                    data.error || (isApp ? 'Failed to send Home Screen link.' : 'Failed to send login text.'),
                     true
                 );
             }
