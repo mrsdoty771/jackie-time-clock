@@ -31,7 +31,7 @@ async function getCompanyDisplayName(companyId) {
   return (settings && settings.companyName) ? String(settings.companyName).trim() : 'MVC Time Clock';
 }
 
-async function sendLoginTextForEmployeeUser(companyId, employee, user, { regeneratePassword = false } = {}) {
+async function sendLoginTextForEmployeeUser(companyId, employee, user, { regeneratePassword = false, appOnly = false } = {}) {
   const phone = employee.phone ? String(employee.phone).trim() : '';
   if (!phone) {
     return { ok: false, error: 'Employee has no phone number on file.' };
@@ -43,6 +43,23 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
       error: `Public app URL is not configured for login links. ${BASE_URL_ENV_HINT}`,
     };
   }
+
+  const companyLabel = await getCompanyDisplayName(companyId);
+
+  // App-only: install link, no password change.
+  if (appOnly) {
+    const appUrl = `${publicBaseUrl}/?install=1`;
+    const body = [
+      companyLabel,
+      'Add the Time Clock app to your phone.',
+      'Then sign in with your usual username and password.',
+      appUrl,
+    ].join('\n');
+    const sms = await sendSmsToPhone(phone, body, companyId);
+    if (!sms.ok) return sms;
+    return { ok: true, message: 'App link text sent.', loginUrl: appUrl };
+  }
+
   let tempPassword = '';
   let shouldPersistCredentials = false;
 
@@ -86,19 +103,23 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
     await user.save();
   }
   const { loginUrl } = await createLoginInvite(companyId, user._id);
-  const companyLabel = await getCompanyDisplayName(companyId);
   const body = [
-    `${companyLabel}`,
+    companyLabel,
     username ? `Username: ${username}` : '',
     `Temp password: ${tempPassword}`,
-    `Tap to sign in and add the Time Clock app to your phone:`,
+    'You will be asked to change this password when you sign in.',
+    `Tap to sign in and add the app:`,
     loginUrl,
   ]
     .filter(Boolean)
     .join('\n');
   const sms = await sendSmsToPhone(phone, body, companyId);
   if (!sms.ok) return sms;
-  return { ok: true, message: 'App & login link text sent.', loginUrl };
+  return {
+    ok: true,
+    message: regeneratePassword ? 'Login password text sent.' : 'Login & app link text sent.',
+    loginUrl,
+  };
 }
 function normalizeStatus(status) {
   if (!status) return 'active';
@@ -388,10 +409,13 @@ async function createEmployee(req, res) {
 }
 
 // POST /api/employees/:id/send-login-text (manager only)
+// body.mode: 'app' = install link only (no password change); 'login' (default) = reset temp password + login invite
 async function sendEmployeeLoginText(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const companyId = req.companyId;
   const { id } = req.params;
+  const mode = String(req.body?.mode || 'login').trim().toLowerCase();
+  const appOnly = mode === 'app';
 
   try {
     const employee = await Employee.findOne({ _id: id, companyId }).lean();
@@ -408,7 +432,8 @@ async function sendEmployeeLoginText(req, res) {
     }
 
     const smsResult = await sendLoginTextForEmployeeUser(companyId, employee, user, {
-      regeneratePassword: true,
+      regeneratePassword: !appOnly,
+      appOnly,
     });
     if (!smsResult.ok) return res.status(400).json({ error: smsResult.error });
     return res.json({ success: true, message: smsResult.message });

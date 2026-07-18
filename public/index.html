@@ -804,7 +804,7 @@
                 <div id="add-employee-success-message" style="margin: 12px 0; font-size: 14px;"></div>
                 <div class="form-actions add-employee-success-actions">
                     <button type="button" class="btn btn-secondary" id="add-employee-copy-credentials-btn">Copy Credentials</button>
-                    <button type="button" class="btn btn-secondary" id="add-employee-send-login-text-btn">Send App &amp; Login Link</button>
+                    <button type="button" class="btn btn-secondary" id="add-employee-send-login-text-btn">Send Login Password &amp; App Link</button>
                 </div>
                 <div class="form-actions" style="margin-top: 8px;">
                     <button type="button" class="btn btn-primary" id="add-employee-done-btn">Done</button>
@@ -844,8 +844,10 @@
                     <input type="tel" id="edit-emp-phone">
                 </div>
                 <div class="form-group edit-employee-login-actions">
-                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn">Resend App &amp; Login Link</button>
-                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Texts a fresh link so they can sign in and add the Time Clock app to their phone.</small>
+                    <button type="button" class="btn btn-secondary" id="edit-employee-send-app-link-btn">Send App Link</button>
+                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Texts a link to add the Time Clock app. Does <strong>not</strong> change their password.</small>
+                    <button type="button" class="btn btn-secondary" id="edit-employee-send-login-text-btn" style="margin-top: 10px;">Reset Password &amp; Text Login</button>
+                    <small style="display: block; margin-top: 6px; color: #666; font-size: 12px;">Resets temp password to password123 and texts a login link. They must change it on next sign-in.</small>
                     <div id="edit-employee-send-login-message" class="edit-employee-send-login-message" aria-live="polite"></div>
                 </div>
                 <div class="form-group">
@@ -1044,7 +1046,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=16"></script>
 </body>
 </html>
 

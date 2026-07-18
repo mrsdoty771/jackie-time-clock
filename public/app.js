@@ -55,8 +55,10 @@ function init() {
     initPwaInstall();
     loadCompanyNameForLogin();
     setTimeout(() => {
+        const wantInstall = consumeInstallQueryFlag();
         redeemLoginInviteFromUrl().then((handled) => {
             if (!handled) checkAuth();
+            if (wantInstall) maybeShowInstallPrompt(true);
         });
     }, 100);
     setupEventListeners();
@@ -70,6 +72,21 @@ function init() {
 const SAVED_LOGIN_KEY = 'tc_saved_login';
 const INSTALL_DISMISS_KEY = 'tc_install_dismissed';
 let deferredInstallPrompt = null;
+
+function consumeInstallQueryFlag() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('install') !== '1' && params.get('app') !== '1') return false;
+        params.delete('install');
+        params.delete('app');
+        const qs = params.toString();
+        const next = window.location.pathname + (qs ? `?${qs}` : '') + (window.location.hash || '');
+        window.history.replaceState({}, document.title, next);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
 
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
@@ -840,7 +857,8 @@ function setupEventListeners() {
     document.getElementById('add-employee-done-btn')?.addEventListener('click', closeAddEmployeeModal);
     document.getElementById('add-employee-copy-credentials-btn')?.addEventListener('click', copyAddEmployeeCredentials);
     document.getElementById('add-employee-send-login-text-btn')?.addEventListener('click', sendAddEmployeeLoginText);
-    document.getElementById('edit-employee-send-login-text-btn')?.addEventListener('click', sendEditEmployeeLoginText);
+    document.getElementById('edit-employee-send-app-link-btn')?.addEventListener('click', () => sendEditEmployeeText('app'));
+    document.getElementById('edit-employee-send-login-text-btn')?.addEventListener('click', () => sendEditEmployeeText('login'));
 
     // Grant manager rights modal
     document.getElementById('confirm-grant-manager-btn')?.addEventListener('click', handleConfirmGrantManager);
@@ -2590,7 +2608,7 @@ function toggleEditEmpPasswordVisibility() {
     const canRevealStored = editEmpHasStoredPassword && editEmpStoredPassword;
     if (!value && !canRevealStored) {
         setEditEmployeeSendLoginMessage(
-            'Password is not stored for viewing. Use Create new password or Resend App & Login Link.',
+            'Password is not stored for viewing. Use Create new password or Reset Password & Text Login.',
             true
         );
         return;
@@ -3138,7 +3156,7 @@ function updateAddEmployeeSendLoginTextButton(phone) {
     if (hasPhone) {
         btn.removeAttribute('title');
     } else {
-        btn.title = 'Add a phone number to send the app & login link. Edit the employee later to add one.';
+        btn.title = 'Add a phone number to send the login password & app link. Edit the employee later to add one.';
     }
 }
 
@@ -3193,45 +3211,54 @@ function setEditEmployeeSendLoginMessage(text, isError) {
 }
 
 function updateEditEmployeeSendLoginTextButton(phone) {
-    const btn = document.getElementById('edit-employee-send-login-text-btn');
-    if (!btn) return;
     const hasPhone = !!(phone && String(phone).replace(/\D/g, '').trim());
-    btn.disabled = !hasPhone;
-    if (hasPhone) {
-        btn.removeAttribute('title');
-    } else {
-        btn.title = 'Add a phone number and save the employee to send the app & login link by text.';
-    }
+    const noPhoneTitle = 'Add a phone number and save the employee to send a text.';
+    ['edit-employee-send-app-link-btn', 'edit-employee-send-login-text-btn'].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = !hasPhone;
+        if (hasPhone) btn.removeAttribute('title');
+        else btn.title = noPhoneTitle;
+    });
 }
 
-function sendEditEmployeeLoginText() {
+function sendEditEmployeeText(mode) {
     const employeeId = document.getElementById('edit-emp-id')?.value;
     if (!employeeId) {
         setEditEmployeeSendLoginMessage('Employee ID missing. Close and try again.', true);
         return;
     }
-    const btn = document.getElementById('edit-employee-send-login-text-btn');
+    const isApp = mode === 'app';
+    const btn = document.getElementById(isApp ? 'edit-employee-send-app-link-btn' : 'edit-employee-send-login-text-btn');
     if (btn?.disabled) return;
     const phone = document.getElementById('edit-emp-phone')?.value || '';
+    const otherBtn = document.getElementById(isApp ? 'edit-employee-send-login-text-btn' : 'edit-employee-send-app-link-btn');
     if (btn) btn.disabled = true;
-    setEditEmployeeSendLoginMessage('Sending app & login link…', false);
+    if (otherBtn) otherBtn.disabled = true;
+    setEditEmployeeSendLoginMessage(isApp ? 'Sending app link…' : 'Sending login password text…', false);
     fetch(`${API_BASE}/employees/${employeeId}/send-login-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: '{}',
+        body: JSON.stringify({ mode: isApp ? 'app' : 'login' }),
     })
         .then(async (res) => {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
             if (res.ok && data.success) {
-                setEditEmployeeSendLoginMessage(data.message || 'App & login link sent.', false);
+                setEditEmployeeSendLoginMessage(
+                    data.message || (isApp ? 'App link sent.' : 'Login password text sent.'),
+                    false
+                );
             } else {
-                setEditEmployeeSendLoginMessage(data.error || 'Failed to send app & login link.', true);
+                setEditEmployeeSendLoginMessage(
+                    data.error || (isApp ? 'Failed to send app link.' : 'Failed to send login text.'),
+                    true
+                );
             }
         })
         .catch(() => {
-            setEditEmployeeSendLoginMessage('Could not send app & login link. Check your connection and try again.', true);
+            setEditEmployeeSendLoginMessage('Could not send text. Check your connection and try again.', true);
         })
         .finally(() => {
             updateEditEmployeeSendLoginTextButton(phone);
@@ -3253,19 +3280,19 @@ function sendAddEmployeeLoginText() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: '{}',
+        body: JSON.stringify({ mode: 'login' }),
     })
         .then(async (res) => {
             const contentType = res.headers.get('content-type');
             const data = (contentType && contentType.includes('application/json')) ? await res.json() : {};
             if (res.ok && data.success) {
-                setAddEmployeeSuccessMessage(data.message || 'App & login link sent.', false);
+                setAddEmployeeSuccessMessage(data.message || 'Login password & app link sent.', false);
             } else {
-                setAddEmployeeSuccessMessage(data.error || 'Failed to send app & login link.', true);
+                setAddEmployeeSuccessMessage(data.error || 'Failed to send login text.', true);
             }
         })
         .catch(() => {
-            setAddEmployeeSuccessMessage('Could not send app & login link. Check your connection and try again.', true);
+            setAddEmployeeSuccessMessage('Could not send login text. Check your connection and try again.', true);
         })
         .finally(() => {
             updateAddEmployeeSendLoginTextButton(modal?.dataset.phone || '');
