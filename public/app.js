@@ -87,17 +87,27 @@ let pendingHomeScreenPrompt = false;
 
 function markPendingHomeScreenPrompt() {
     pendingHomeScreenPrompt = true;
+    try { localStorage.setItem(PENDING_INSTALL_KEY, '1'); } catch (_) {}
     try { sessionStorage.setItem(PENDING_INSTALL_KEY, '1'); } catch (_) {}
 }
 
 function consumePendingHomeScreenPrompt() {
     let pending = pendingHomeScreenPrompt;
     try {
+        if (localStorage.getItem(PENDING_INSTALL_KEY) === '1') pending = true;
+        localStorage.removeItem(PENDING_INSTALL_KEY);
+    } catch (_) {}
+    try {
         if (sessionStorage.getItem(PENDING_INSTALL_KEY) === '1') pending = true;
         sessionStorage.removeItem(PENDING_INSTALL_KEY);
     } catch (_) {}
     pendingHomeScreenPrompt = false;
     return pending;
+}
+
+function showHomeScreenPromptWhenReady(force) {
+    // Wait a tick so the employee page is visible and timezone load can finish.
+    setTimeout(() => maybeShowInstallPrompt(!!force), 400);
 }
 
 function consumeInstallQueryFlag() {
@@ -325,6 +335,10 @@ async function redeemLoginInviteFromUrl() {
     const token = params.get('invite');
     if (!token) return false;
 
+    // New-hire SMS link — always offer Home Screen after they get in (even if invite redeem fails
+    // and they type the username/password from the text, or switch from Messages to Chrome).
+    markPendingHomeScreenPrompt();
+
     window.history.replaceState({}, document.title, window.location.pathname);
 
     const errorDiv = document.getElementById('login-error');
@@ -347,8 +361,6 @@ async function redeemLoginInviteFromUrl() {
         if (errorDiv) errorDiv.textContent = '';
         // Remember this login on the device so the home-screen icon opens ready to clock in.
         saveDeviceLogin(data.username, data.password);
-        // Show Home Screen tips after they finish signing in (and any forced password change).
-        markPendingHomeScreenPrompt();
         return true;
     } catch (err) {
         console.error('Login invite error:', err);
@@ -699,10 +711,10 @@ function showPage(role) {
             updatePunchButtonStates([]);
             loadEmployeeRecords();
         }
-        // After a new-hire invite link: always show Home Screen tips once they are in.
+        // After a new-hire invite / first password change: show Home Screen tips.
         // Otherwise gently nudge employees still using the browser.
-        if (consumePendingHomeScreenPrompt()) maybeShowInstallPrompt(true);
-        else if (role === 'employee') maybeShowInstallPrompt(false);
+        if (consumePendingHomeScreenPrompt()) showHomeScreenPromptWhenReady(true);
+        else if (role === 'employee') showHomeScreenPromptWhenReady(false);
     });
 }
 
@@ -1424,8 +1436,11 @@ function handleForcedPasswordSubmit(e) {
             const savedUser = currentUser?.username || getDeviceLogin()?.username;
             if (savedUser) saveDeviceLogin(savedUser, newPassword);
             document.getElementById('forced-password-form').reset();
+            // New hires always land here after the temp password — offer Home Screen next.
+            markPendingHomeScreenPrompt();
             showPage(currentUser.role);
             loadInitialData();
+            showHomeScreenPromptWhenReady(true);
         })
         .catch((err) => {
             msgEl.textContent = err.message || 'Something went wrong. Please try again.';
@@ -1551,6 +1566,8 @@ function handleLogin(e) {
                 document.getElementById('login-form').reset();
                 errorDiv.textContent = '';
                 hideInstallModal();
+                // First login / temp password — show Home Screen after they choose a new password.
+                markPendingHomeScreenPrompt();
                 showForcedPasswordChangeUI();
                 return;
             }

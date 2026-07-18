@@ -97,7 +97,7 @@ body.has-window-controls-overlay {
 .install-modal {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: 100001;
     display: flex;
     align-items: center;
     justify-content: center;
