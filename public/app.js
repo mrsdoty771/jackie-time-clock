@@ -65,7 +65,9 @@ function init() {
             }
             redeemLoginInviteFromUrl().then((handled) => {
                 if (!handled) checkAuth();
-                if (wantInstall) maybeShowInstallPrompt(true);
+                // Home Screen SMS (?install=1): show instructions now.
+                // Login-invite SMS: wait until after they sign in / set password (see showPage).
+                if (wantInstall && !handled) maybeShowInstallPrompt(true);
             });
         });
     }, 100);
@@ -79,7 +81,24 @@ function init() {
 
 const SAVED_LOGIN_KEY = 'tc_saved_login';
 const INSTALL_DISMISS_KEY = 'tc_install_dismissed';
+const PENDING_INSTALL_KEY = 'tc_pending_install';
 let deferredInstallPrompt = null;
+let pendingHomeScreenPrompt = false;
+
+function markPendingHomeScreenPrompt() {
+    pendingHomeScreenPrompt = true;
+    try { sessionStorage.setItem(PENDING_INSTALL_KEY, '1'); } catch (_) {}
+}
+
+function consumePendingHomeScreenPrompt() {
+    let pending = pendingHomeScreenPrompt;
+    try {
+        if (sessionStorage.getItem(PENDING_INSTALL_KEY) === '1') pending = true;
+        sessionStorage.removeItem(PENDING_INSTALL_KEY);
+    } catch (_) {}
+    pendingHomeScreenPrompt = false;
+    return pending;
+}
 
 function consumeInstallQueryFlag() {
     try {
@@ -328,8 +347,8 @@ async function redeemLoginInviteFromUrl() {
         if (errorDiv) errorDiv.textContent = '';
         // Remember this login on the device so the home-screen icon opens ready to clock in.
         saveDeviceLogin(data.username, data.password);
-        // First thing after tapping the SMS link: offer to add the app to their phone.
-        maybeShowInstallPrompt(true);
+        // Show Home Screen tips after they finish signing in (and any forced password change).
+        markPendingHomeScreenPrompt();
         return true;
     } catch (err) {
         console.error('Login invite error:', err);
@@ -679,9 +698,11 @@ function showPage(role) {
             updateEmployeeNameDisplay();
             updatePunchButtonStates([]);
             loadEmployeeRecords();
-            // Gentle nudge for employees still using the browser to install the app.
-            maybeShowInstallPrompt(false);
         }
+        // After a new-hire invite link: always show Home Screen tips once they are in.
+        // Otherwise gently nudge employees still using the browser.
+        if (consumePendingHomeScreenPrompt()) maybeShowInstallPrompt(true);
+        else if (role === 'employee') maybeShowInstallPrompt(false);
     });
 }
 
@@ -1529,6 +1550,7 @@ function handleLogin(e) {
             if (data.must_change_password || currentUser.must_change_password) {
                 document.getElementById('login-form').reset();
                 errorDiv.textContent = '';
+                hideInstallModal();
                 showForcedPasswordChangeUI();
                 return;
             }

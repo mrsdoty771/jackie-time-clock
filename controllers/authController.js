@@ -594,7 +594,7 @@ async function getLoginInvite(req, res) {
       companyId: invite.companyId,
       role: { $in: ['employee', 'manager', 'super-admin'] },
     })
-      .select('username passwordDisplayEncrypted mustChangePassword employeeId name');
+      .select('username password passwordDisplayEncrypted mustChangePassword employeeId name');
     if (!user) return res.status(404).json({ error: 'Account not found.' });
 
     let employee = null;
