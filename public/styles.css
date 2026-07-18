@@ -37,8 +37,9 @@ html {
         padding: 0 12px;
         box-sizing: border-box;
         z-index: 100000;
-        background: #667eea;
-        color: #fff;
+        background: #ffffff;
+        color: #333333;
+        border-bottom: 1px solid #e5e5e5;
         font-size: 13px;
         font-weight: 600;
         -webkit-app-region: drag;
@@ -68,8 +69,9 @@ body.has-window-controls-overlay .app-titlebar {
     padding: 0 12px;
     box-sizing: border-box;
     z-index: 100000;
-    background: #667eea;
-    color: #fff;
+    background: #ffffff;
+    color: #333333;
+    border-bottom: 1px solid #e5e5e5;
     font-size: 13px;
     font-weight: 600;
     -webkit-app-region: drag;
