@@ -730,6 +730,14 @@ function setupEventListeners() {
         return false;
     });
     document.getElementById('forced-password-form')?.addEventListener('submit', handleForcedPasswordSubmit);
+    document.getElementById('forced-new-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        togglePasswordVisibility('forced-new-password', 'forced-new-password-toggle');
+    });
+    document.getElementById('forced-confirm-password-toggle')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        togglePasswordVisibility('forced-confirm-password', 'forced-confirm-password-toggle');
+    });
     // Forgot password: show forgot form, hide login password + button
     document.getElementById('forgot-password-link')?.addEventListener('click', (e) => {
         e.preventDefault();
