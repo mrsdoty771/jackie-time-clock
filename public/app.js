@@ -244,6 +244,7 @@ function attemptSilentLogin() {
             if (data && data.success) {
                 currentUser = data.user;
                 if (data.must_change_password || currentUser.must_change_password) {
+                    markPendingHomeScreenPrompt();
                     showForcedPasswordChangeUI();
                     return true;
                 }
