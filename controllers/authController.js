@@ -9,7 +9,7 @@ const CompanySettings = require('../models/CompanySettings');
 const { encrypt, decrypt } = require('../utils/encrypt');
 const { redeemLoginInvite } = require('../utils/loginInvite');
 const { peekPasswordReset, consumePasswordReset } = require('../utils/passwordReset');
-const { ensureEmployeeLoginUsername } = require('../utils/loginUsername');
+const { ensureEmployeeLoginUsername, findUserByUsernameCI } = require('../utils/loginUsername');
 
 function normalizeCompanyId(raw) {
   const companyId = String(raw || '').trim();
@@ -39,13 +39,13 @@ function looksLikeEmail(s) {
 }
 
 /**
- * Resolve a User within companyId by username (exact) or email (case-insensitive).
+ * Resolve a User within companyId by username (case-insensitive) or email (case-insensitive).
  */
 async function resolveUserByIdentifier(companyId, identifierRaw) {
   const identifier = String(identifierRaw || '').trim();
   if (!identifier) return { user: null, employeeName: null };
 
-  let user = await User.findOne({ companyId, username: identifier }).lean();
+  let user = await findUserByUsernameCI(companyId, identifier);
   if (user) {
     let employeeName = null;
     if (user.employeeId) {

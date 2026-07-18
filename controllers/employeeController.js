@@ -12,6 +12,7 @@ const {
   allocateUniqueLoginUsername,
   ensureEmployeeLoginUsername,
   usernameLooksLikeEmployeeNumber,
+  findUserByUsernameCI,
 } = require('../utils/loginUsername');
 const {
   isSystemClockEmployee,
@@ -370,7 +371,7 @@ async function createEmployee(req, res) {
     if (loginUsername.length < 2 || loginUsername.length > 64) {
       return res.status(400).json({ error: 'Username must be 2–64 characters' });
     }
-    const taken = await User.findOne({ companyId, username: loginUsername }).select('_id').lean();
+    const taken = await findUserByUsernameCI(companyId, loginUsername);
     if (taken) return res.status(400).json({ error: 'That username is already taken in your company' });
   } else {
     loginUsername = await allocateUniqueLoginUsername(companyId, String(name).trim(), String(employee_number).trim());
@@ -540,9 +541,7 @@ async function updateEmployee(req, res) {
           error: 'Login username cannot be the employee number. Use first name + last initial (e.g. EmilyD).',
         });
       }
-      const taken = await User.findOne({ companyId, username: u, _id: { $ne: loginUser._id } })
-        .select('_id')
-        .lean();
+      const taken = await findUserByUsernameCI(companyId, u, { excludeUserId: loginUser._id });
       if (taken) {
         return res.status(400).json({ error: 'That username is already taken in your company' });
       }

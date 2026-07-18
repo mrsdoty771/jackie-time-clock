@@ -1,5 +1,22 @@
 const User = require('../models/User');
 
+function escapeRegex(s) {
+  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Case-insensitive username match within a company (optional excludeUserId for edits). */
+async function findUserByUsernameCI(companyId, usernameRaw, { excludeUserId = null, lean = true } = {}) {
+  const username = String(usernameRaw || '').trim();
+  if (!username || !companyId) return null;
+  const query = {
+    companyId: String(companyId).trim(),
+    username: new RegExp(`^${escapeRegex(username)}$`, 'i'),
+  };
+  if (excludeUserId) query._id = { $ne: excludeUserId };
+  const q = User.findOne(query);
+  return lean ? q.lean() : q;
+}
+
 /** Login style: first name + last name initial, e.g. "Josh Doe" -> "JoshD". One word -> that word capitalized. */
 function suggestedLoginUsernameFromDisplayName(fullName) {
   const trimmed = String(fullName || '').trim();
@@ -39,9 +56,7 @@ async function allocateUniqueLoginUsername(companyId, fullName, fallbackBase, ex
   if (!base) base = 'user';
   let candidate = base;
   for (let n = 0; n < 500; n += 1) {
-    const query = { companyId, username: candidate };
-    if (excludeUserId) query._id = { $ne: excludeUserId };
-    const clash = await User.findOne(query).select('_id').lean();
+    const clash = await findUserByUsernameCI(companyId, candidate, { excludeUserId });
     if (!clash) return candidate;
     candidate = `${base}${n + 1}`;
   }
@@ -73,6 +88,8 @@ async function ensureEmployeeLoginUsername(companyId, employee, user, { save = t
 }
 
 module.exports = {
+  escapeRegex,
+  findUserByUsernameCI,
   suggestedLoginUsernameFromDisplayName,
   usernameLooksLikeEmployeeNumber,
   allocateUniqueLoginUsername,
