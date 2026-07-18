@@ -54,6 +54,7 @@ function init() {
     registerServiceWorker();
     initPwaInstall();
     initWindowControlsOverlay();
+    maybeSetDefaultDesktopAppWindowSize();
     loadCompanyNameForLogin();
     setTimeout(() => {
         const wantInstall = consumeInstallQueryFlag();
@@ -117,12 +118,58 @@ function registerServiceWorker() {
 
 function isRunningAsInstalledApp() {
     return (
-        window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+        window.matchMedia && (
+            window.matchMedia('(display-mode: standalone)').matches
+            || window.matchMedia('(display-mode: window-controls-overlay)').matches
+        )
     ) || window.navigator.standalone === true;
 }
 
 function isIosDevice() {
     return /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+}
+
+/**
+ * Best-effort default size for the installed desktop app window.
+ * Browsers may block resizeTo; Chrome often remembers the last size after the user closes the app.
+ */
+function maybeSetDefaultDesktopAppWindowSize() {
+    try {
+        if (!isRunningAsInstalledApp()) return;
+        if (isIosDevice()) return;
+        if (/Android/i.test(navigator.userAgent || '')) return;
+
+        const PREFERRED_W = 920;
+        const PREFERRED_H = 740;
+        const KEY = 'tc_desktop_window_default_v1';
+
+        // Only apply once per profile so we don't fight a size the user prefers later.
+        if (localStorage.getItem(KEY) === '1') return;
+
+        const tooWide = window.outerWidth > PREFERRED_W + 100;
+        const tooTall = window.outerHeight > PREFERRED_H + 100;
+        // Skip if already close to preferred (or smaller on a small monitor).
+        if (!tooWide && !tooTall) {
+            localStorage.setItem(KEY, '1');
+            return;
+        }
+
+        if (typeof window.resizeTo !== 'function') return;
+
+        const w = Math.min(PREFERRED_W, screen.availWidth || PREFERRED_W);
+        const h = Math.min(PREFERRED_H, screen.availHeight || PREFERRED_H);
+        window.resizeTo(w, h);
+
+        if (typeof window.moveTo === 'function') {
+            const left = Math.max(0, Math.round(((screen.availWidth || w) - w) / 2));
+            const top = Math.max(0, Math.round(((screen.availHeight || h) - h) / 2));
+            window.moveTo(left, top);
+        }
+
+        localStorage.setItem(KEY, '1');
+    } catch (_) {
+        // Browsers may block window resizing; ignore.
+    }
 }
 
 /** Remember this employee's login on THIS device so the home-screen icon opens ready to clock in. */
