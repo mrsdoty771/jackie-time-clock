@@ -50,11 +50,9 @@ async function sendLoginTextForEmployeeUser(companyId, employee, user, { regener
   if (appOnly) {
     const appUrl = `${publicBaseUrl}/?install=1`;
     const body = [
-      companyLabel,
-      'Add Time Clock to your Home Screen (a shortcut — not an app download).',
-      'Open this link in Chrome, then tap Menu (⋮) → Add to Home screen:',
+      `${companyLabel}: Add Time Clock to Home Screen`,
       appUrl,
-      'Then sign in with your usual username and password.',
+      'Open in Chrome → Menu → Add to Home screen. Sign in as usual.',
     ].join('\n');
     const sms = await sendSmsToPhone(phone, body, companyId);
     if (!sms.ok) return sms;
