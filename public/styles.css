@@ -729,6 +729,10 @@ html {
     border-radius: 10px;
     margin-bottom: 20px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .employee-status-bar {
@@ -1125,13 +1129,18 @@ html {
 .timesheet-employee {
     margin-bottom: 28px;
     max-width: 100%;
+    min-width: 0;
 }
 
 .timesheet-scroll {
+    display: block;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 .timesheet-employee-name {
@@ -1221,16 +1230,24 @@ html {
     .timesheet-header {
         flex-direction: column;
         align-items: flex-start;
+        max-width: 100%;
     }
     .timesheet-dates span {
         display: block;
         margin-left: 0;
         margin-top: 4px;
     }
+    .timesheet-scroll {
+        border: 1px solid #e5e5e5;
+        border-radius: 6px;
+        background: #fff;
+    }
     .timesheet-table {
         font-size: 11px;
         table-layout: auto;
-        min-width: 520px;
+        width: max-content;
+        min-width: 100%;
+        max-width: none;
     }
     .timesheet-table col.col-date,
     .timesheet-table col.col-time,
@@ -1246,6 +1263,11 @@ html {
         white-space: normal;
         line-height: 1.15;
     }
+    /* Notes column is least critical on phone — keep table narrower */
+    .timesheet-table th:nth-child(7),
+    .timesheet-table td:nth-child(7) {
+        display: none;
+    }
 }
 
 /* --- Responsive Layout --- */
@@ -1254,6 +1276,12 @@ html {
         padding: 0 12px 24px;
         max-width: 100%;
         box-sizing: border-box;
+        overflow-x: hidden;
+    }
+    .records-section,
+    .punch-section {
+        padding: 16px;
+        overflow-x: auto;
     }
     .modal-content,
     .popup-modal-content {
@@ -1280,6 +1308,7 @@ html {
     #employee-records,
     #report-results {
         max-width: 100%;
-        overflow-x: hidden;
+        min-width: 0;
+        overflow-x: visible; /* let .timesheet-scroll handle horizontal scroll */
     }
 }
