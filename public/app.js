@@ -1617,11 +1617,15 @@ function openMissingClockOutModal(data, options = {}) {
 
     const modal = document.getElementById('missing-clock-out-modal');
     const dateEl = document.getElementById('missing-clock-out-date');
+    const clockInEl = document.getElementById('missing-clock-out-clock-in');
     const timeEl = document.getElementById('missing-clock-out-time');
     const msgEl = document.getElementById('missing-clock-out-message');
     const errEl = document.getElementById('missing-clock-out-error');
     if (errEl) errEl.textContent = '';
     if (dateEl) dateEl.value = data.open_local_date || '';
+    if (clockInEl) {
+        clockInEl.value = data.clock_in_time ? formatTimeOnly(data.clock_in_time) : '';
+    }
     if (timeEl) timeEl.value = '';
     if (msgEl) {
         const dayLabel = data.open_local_date ? formatShortDate(data.open_local_date) : 'a previous day';
