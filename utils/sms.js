@@ -14,6 +14,7 @@ const {
   missingPunchNotifyVars,
   formatConfigError,
 } = require('./twilioConfig');
+const { getCompanyTimezone } = require('./timezone');
 
 function isConfiguredSync() {
   const cfg = getEnvTwilioConfig();
@@ -33,13 +34,16 @@ const PUNCH_LABELS = {
   lunch_in: 'returned from lunch',
 };
 
-function formatTime(date) {
+function formatTime(date, timezone) {
   const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleTimeString('en-US', {
+  const opts = {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  });
+  };
+  const tz = timezone && String(timezone).trim();
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleTimeString('en-US', opts);
 }
 
 /**
@@ -90,7 +94,8 @@ async function sendPunchNotification(employeeName, punchType, punchTime, company
   }
   const rawType = String(punchType || '').trim();
   const label = PUNCH_LABELS[rawType] || PUNCH_LABELS[rawType.replace(/-/g, '_')] || rawType || 'punched';
-  const timeStr = formatTime(punchTime);
+  const tz = await getCompanyTimezone(companyId);
+  const timeStr = formatTime(punchTime, tz);
   const name = String(employeeName || 'Employee').trim() || 'Employee';
   const body = `${name} ${label} at ${timeStr}.`;
 
