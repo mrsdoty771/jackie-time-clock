@@ -2060,7 +2060,7 @@ function getEmployeeTimesheetPrintStyles() {
         }
         .timesheet-table col.col-date { width: 78px; }
         .timesheet-table col.col-time { width: 72px; }
-        .timesheet-table col.col-hours { width: 78px; }
+        .timesheet-table col.col-hours { width: 52px; }
         .timesheet-table th,
         .timesheet-table td {
             border: 1px solid #ccc;
@@ -2087,12 +2087,18 @@ function getEmployeeTimesheetPrintStyles() {
             font-size: 10px;
             white-space: nowrap;
         }
-        .timesheet-hours { text-align: right; white-space: nowrap; }
+        .timesheet-table th:nth-child(6) {
+            font-size: 11px;
+            white-space: normal;
+            text-align: center;
+            line-height: 1.15;
+        }
+        .timesheet-hours { text-align: right; white-space: nowrap; font-size: 12px; }
         .timesheet-grand-total {
             color: #c00;
             font-weight: bold;
             text-align: right;
-            font-size: 14px;
+            font-size: 12px;
         }
         .timesheet-notes {
             font-size: 11px;
@@ -3946,7 +3952,7 @@ function printReport() {
                 }
                 .timesheet-table col.col-date { width: 78px; }
                 .timesheet-table col.col-time { width: 72px; }
-                .timesheet-table col.col-hours { width: 78px; }
+                .timesheet-table col.col-hours { width: 52px; }
                 .timesheet-table th,
                 .timesheet-table td {
                     border: 1px solid #ccc;
@@ -3973,12 +3979,18 @@ function printReport() {
                     font-size: 10px;
                     white-space: nowrap;
                 }
-                .timesheet-hours { text-align: right; white-space: nowrap; }
+                .timesheet-table th:nth-child(6) {
+                    font-size: 11px;
+                    white-space: normal;
+                    text-align: center;
+                    line-height: 1.15;
+                }
+                .timesheet-hours { text-align: right; white-space: nowrap; font-size: 12px; }
                 .timesheet-grand-total {
                     color: #c00;
                     font-weight: bold;
                     text-align: right;
-                    font-size: 14px;
+                    font-size: 12px;
                 }
                 .timesheet-notes {
                     font-size: 11px;

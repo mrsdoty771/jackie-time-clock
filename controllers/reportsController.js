@@ -140,7 +140,7 @@ function getDayPunchTimeTz(day, type, tz) {
 function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, timezone) {
   const tz = timezone || 'UTC';
   const colX = [50, 105, 148, 191, 234, 277, 328];
-  const colW = [52, 40, 40, 40, 40, 48, 217];
+  const colW = [52, 40, 40, 40, 40, 38, 227];
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
