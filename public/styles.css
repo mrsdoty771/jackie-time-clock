@@ -294,6 +294,25 @@ body.has-window-controls-overlay {
     font-size: 11px;
 }
 
+.timesheet-time-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    line-height: 1.2;
+}
+
+.timesheet-time-stack .timesheet-time-value {
+    white-space: nowrap;
+}
+
+.timesheet-time-stack .pending-flag {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
 .timesheet-pending-cell {
     background: #fff3f3;
 }
@@ -1221,8 +1240,8 @@ body.has-window-controls-overlay {
 }
 
 .timesheet-table col.col-date { width: 78px; }
-.timesheet-table col.col-time { width: 72px; }
-.timesheet-table col.col-hours { width: 78px; }
+.timesheet-table col.col-time { width: 76px; }
+.timesheet-table col.col-hours { width: 72px; }
 
 .timesheet-table th,
 .timesheet-table td {
@@ -1242,15 +1261,21 @@ body.has-window-controls-overlay {
 .timesheet-table td:nth-child(5) {
     padding: 5px 3px;
     font-size: 12px;
-    white-space: nowrap;
+    white-space: normal;
     text-align: center;
+    overflow: hidden;
 }
 
 .timesheet-table th:nth-child(6),
 .timesheet-table td.timesheet-hours {
     padding: 5px 4px;
     white-space: nowrap;
-    overflow: visible;
+    overflow: hidden;
+    background: #fff;
+}
+
+.timesheet-pending-cell td.timesheet-hours {
+    background: #fff3f3;
 }
 
 .timesheet-table th {

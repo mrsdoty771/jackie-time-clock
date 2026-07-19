@@ -3765,7 +3765,7 @@ function getDayPunchCell(day, type) {
     if (!match) return '';
     const timeText = formatTimeOnly(match.time);
     if (match.approval_status === 'pending') {
-        return `${timeText} <span class="pending-flag" title="Pending manager approval">(Pending)</span>`;
+        return `<span class="timesheet-time-stack"><span class="timesheet-time-value">${timeText}</span><span class="pending-flag" title="Pending manager approval">Pending</span></span>`;
     }
     return timeText;
 }
