@@ -15,7 +15,7 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/icon-192.png">
 
-    <link rel="stylesheet" href="styles.css?v=21">
+    <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
     <!-- Custom title bar when installed as a desktop app (Window Controls Overlay) -->
@@ -121,6 +121,11 @@
             <div id="employee-status-bar" class="employee-status-bar employee-status-clocked-out" aria-live="polite">
                 <span class="employee-status-label">You are currently:</span>
                 <strong id="employee-status-text">Clocked Out</strong>
+            </div>
+
+            <div class="form-group punch-note-group">
+                <label for="punch-note">Note (optional)</label>
+                <textarea id="punch-note" rows="2" placeholder="e.g. Running late, doctor appointment, working from home"></textarea>
             </div>
 
             <div class="punch-section">
@@ -1082,7 +1087,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=28"></script>
+    <script src="script.js?v=29"></script>
 </body>
 </html>
 

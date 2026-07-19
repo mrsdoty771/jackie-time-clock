@@ -831,6 +831,22 @@ body.has-window-controls-overlay {
     text-align: center;
 }
 
+.punch-note-group {
+    background: white;
+    padding: 18px 25px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.punch-note-group textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 56px;
+}
+
 .employee-status-label {
     color: #444;
     font-weight: 500;
