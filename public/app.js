@@ -2093,11 +2093,11 @@ function getEmployeeTimesheetPrintStyles() {
             text-align: center;
             line-height: 1.15;
         }
-        .timesheet-hours { text-align: right; white-space: nowrap; font-size: 12px; }
+        .timesheet-hours { text-align: center; white-space: nowrap; font-size: 12px; }
         .timesheet-grand-total {
             color: #c00;
             font-weight: bold;
-            text-align: right;
+            text-align: center;
             font-size: 12px;
         }
         .timesheet-notes {
@@ -3985,11 +3985,11 @@ function printReport() {
                     text-align: center;
                     line-height: 1.15;
                 }
-                .timesheet-hours { text-align: right; white-space: nowrap; font-size: 12px; }
+                .timesheet-hours { text-align: center; white-space: nowrap; font-size: 12px; }
                 .timesheet-grand-total {
                     color: #c00;
                     font-weight: bold;
-                    text-align: right;
+                    text-align: center;
                     font-size: 12px;
                 }
                 .timesheet-notes {

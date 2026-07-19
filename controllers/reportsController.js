@@ -163,7 +163,7 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, tim
       doc.fontSize(8).fillColor('#000');
       const headerY = doc.y;
       headers.forEach((h, i) => {
-        doc.text(h, colX[i], headerY, { width: colW[i], align: i === 5 ? 'right' : 'left' });
+        doc.text(h, colX[i], headerY, { width: colW[i], align: i === 5 ? 'center' : 'left' });
       });
       doc.moveDown(0.6);
       doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke('#ccc');
@@ -185,7 +185,7 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, tim
           formatHoursAsHMM(day.hours),
         ];
         cells.forEach((text, i) => {
-          doc.fontSize(9).fillColor('#000').text(text, colX[i], rowY, { width: colW[i], align: i === 5 ? 'right' : 'left' });
+          doc.fontSize(9).fillColor('#000').text(text, colX[i], rowY, { width: colW[i], align: i === 5 ? 'center' : 'left' });
         });
         const notes = (day.punches || []).filter((p) => p.notes).map((p) => p.notes).join('; ');
         if (notes) {
@@ -195,7 +195,7 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, tim
       });
 
       doc.moveDown(0.2);
-      doc.fontSize(11).fillColor('#cc0000').text(formatHoursAsHMM(emp.total_hours), colX[5], doc.y, { width: colW[5], align: 'right' });
+      doc.fontSize(11).fillColor('#cc0000').text(formatHoursAsHMM(emp.total_hours), colX[5], doc.y, { width: colW[5], align: 'center' });
       doc.fillColor('#000');
       doc.moveDown(1.2);
     });
