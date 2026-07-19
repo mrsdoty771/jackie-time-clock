@@ -44,11 +44,31 @@ Copy values from [Twilio Console](https://console.twilio.com). Names must match 
 | Source | Notes |
 |--------|--------|
 | Company Settings → **Public app URL** | Per company; preferred on DO |
-| `BASE_URL` (env) | e.g. `https://hammerhead-app-otcfa.ondigitalocean.app` |
+| `BASE_URL` (env) | Fallback, e.g. `https://hammerhead-app-otcfa.ondigitalocean.app` |
 
 No trailing slash. Without either, “Send login text” returns a clear API error in production; punch SMS may still work if Twilio is configured.
 
 Env alternatives for `BASE_URL`: `APP_URL`, `PUBLIC_URL`, `WEB_URL`, or `SITE_URL` (first non-empty wins).
+
+### Custom domain (shorter SMS links)
+
+SMS shows whatever Public app URL / `BASE_URL` you set. To use something short like `https://timeclock.mvc.com` instead of the long DigitalOcean hammerhead URL:
+
+1. **DigitalOcean App Platform**
+   - Open your app → **Settings** → **Domains**
+   - **Add Domain** → enter `timeclock.mvc.com`
+   - Follow DO’s instructions for the DNS record (usually a **CNAME** for `timeclock` pointing at your app’s DO hostname)
+2. **Your domain DNS** (wherever `mvc.com` is managed — GoDaddy, Cloudflare, etc.)
+   - Create a **CNAME**: host `timeclock` → value DigitalOcean gives you (often something like `hammerhead-app-otcfa.ondigitalocean.app`)
+   - Wait for DNS to propagate (minutes to a few hours)
+   - Confirm `https://timeclock.mvc.com` loads the time clock (DO will provision HTTPS)
+3. **In the time clock**
+   - Manager → **Company Settings** → **Public app URL**
+   - Set: `https://timeclock.mvc.com` (no trailing slash)
+   - **Save Settings**
+4. **Optional but recommended** — set DigitalOcean env `BASE_URL` to the same URL and redeploy so server fallbacks match.
+
+New SMS links will use `https://timeclock.mvc.com/...`. Old texts already sent still have the old hammerhead links until you resend.
 
 ## Recommended for production
 

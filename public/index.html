@@ -695,8 +695,11 @@
                     </div>
                     <div class="form-group">
                         <label for="company-public-base-url">Public app URL</label>
-                        <input type="url" id="company-public-base-url" placeholder="https://your-app.ondigitalocean.app" autocomplete="off">
-                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">HTTPS URL for login links in SMS (no trailing slash). Overrides server <code>BASE_URL</code> when set.</small>
+                        <input type="url" id="company-public-base-url" placeholder="https://timeclock.mvc.com" autocomplete="off">
+                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
+                            HTTPS address used in SMS links (no trailing slash). Use your short custom domain when ready
+                            (e.g. <code>https://timeclock.mvc.com</code>). Overrides server <code>BASE_URL</code> when set.
+                        </small>
                     </div>
                     <button type="submit" class="btn btn-primary">Save Settings</button>
                 </form>
