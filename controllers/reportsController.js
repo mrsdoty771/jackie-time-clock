@@ -159,7 +159,7 @@ function buildReportPdf(reportData, startDateStr, endDateStr, employeeLabel, tim
       doc.fontSize(12).fillColor('#000').text(emp.employee_name, 50, doc.y);
       doc.moveDown(0.4);
 
-      const headers = ['Work Date', 'Time In', 'Lunch Out', 'Lunch In', 'Time Out', 'Total Hours'];
+      const headers = ['Work Date', 'Time In', 'Lunch Out', 'Lunch In', 'Time Out', 'Total Hrs'];
       doc.fontSize(8).fillColor('#000');
       const headerY = doc.y;
       headers.forEach((h, i) => {

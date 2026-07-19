@@ -3826,7 +3826,7 @@ function buildEmployeeTimesheet(emp) {
                         <th>Lunch Out</th>
                         <th>Lunch In</th>
                         <th>Time Out</th>
-                        <th>Total Hours</th>
+                        <th>Total Hrs</th>
                         <th>Notes</th>
                     </tr>
                 </thead>
