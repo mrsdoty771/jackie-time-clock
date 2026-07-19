@@ -3827,12 +3827,12 @@ function buildEmployeeTimesheet(emp) {
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>Work Date</th>
-                        <th>Time In</th>
-                        <th>Lunch Out</th>
-                        <th>Lunch In</th>
-                        <th>Time Out</th>
-                        <th>Total Hrs</th>
+                        <th><span class="th-full">Work Date</span><span class="th-short">Date</span></th>
+                        <th><span class="th-full">Time In</span><span class="th-short">In</span></th>
+                        <th><span class="th-full">Lunch Out</span><span class="th-short">L Out</span></th>
+                        <th><span class="th-full">Lunch In</span><span class="th-short">L In</span></th>
+                        <th><span class="th-full">Time Out</span><span class="th-short">Out</span></th>
+                        <th><span class="th-full">Total Hrs</span><span class="th-short">Hrs</span></th>
                         <th>Notes</th>
                     </tr>
                 </thead>
