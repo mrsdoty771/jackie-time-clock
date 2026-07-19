@@ -28,8 +28,9 @@ const PUNCH_LABELS = {
   clock_in: 'clocked in',
   clock_out: 'clocked out',
   'clock-out': 'clocked out',
-  lunch_in: 'started lunch',
-  lunch_out: 'ended lunch',
+  // App: "Go to Lunch" saves lunch_out; "Return from Lunch" saves lunch_in.
+  lunch_out: 'started lunch',
+  lunch_in: 'ended lunch',
 };
 
 function formatTime(date) {
