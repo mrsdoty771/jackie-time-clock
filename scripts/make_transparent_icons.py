@@ -1,13 +1,17 @@
-"""Make white padding around rounded app icons transparent."""
+"""Build full-bleed opaque icons for Windows/Chrome PWA shortcuts.
+
+Chrome fills transparent PNG pixels with manifest background_color (white),
+which caused the white box around the logo. These icons fill the whole square
+with the logo colors — including the former rounded-corner white triangles.
+"""
 from pathlib import Path
-from PIL import Image, ImageDraw
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 ICONS = ROOT / 'public' / 'icons'
-CORNER_RATIO = 0.22
 
 
-def is_bg(rgb, threshold=245):
+def is_bg(rgb, threshold=248):
     r, g, b = rgb[:3]
     return r >= threshold and g >= threshold and b >= threshold
 
@@ -28,72 +32,51 @@ def content_bbox(im):
     return (minx, miny, maxx, maxy)
 
 
-def make_transparent(src_path, dest_path, out_size):
+def fill_white_from_interior(im):
+    """Replace near-white pixels (rounded-corner leftovers) with nearby logo colors."""
+    px = im.load()
+    w, h = im.size
+    cx, cy = w // 2, h // 2
+    for y in range(h):
+        for x in range(w):
+            if not is_bg(px[x, y]):
+                continue
+            dx = cx - x
+            dy = cy - y
+            steps = max(abs(dx), abs(dy), 1)
+            found = None
+            for i in range(1, steps + 1):
+                nx = x + (dx * i) // steps
+                ny = y + (dy * i) // steps
+                if 0 <= nx < w and 0 <= ny < h and not is_bg(px[nx, ny]):
+                    found = px[nx, ny]
+                    break
+            if found is None:
+                found = (90, 100, 210)
+            r, g, b = found[:3]
+            px[x, y] = (r, g, b) if im.mode == 'RGB' else (r, g, b, 255)
+
+
+def make_full_bleed(src_path, dest_path, size):
     im = Image.open(src_path).convert('RGBA')
     minx, miny, maxx, maxy = content_bbox(im)
-    pad = max(2, int(im.size[0] * 0.004))
-    logo = im.crop((
-        max(0, minx - pad),
-        max(0, miny - pad),
-        min(im.size[0], maxx + pad + 1),
-        min(im.size[1], maxy + pad + 1),
-    ))
-
-    # Small inset so soft edges aren't clipped by desktop icon masks
-    inset = max(2, int(out_size * 0.02))
-    target = out_size - inset * 2
-    logo = logo.resize((target, target), Image.Resampling.LANCZOS)
-
-    radius = int(target * CORNER_RATIO)
-    rmask = Image.new('L', (target, target), 0)
-    ImageDraw.Draw(rmask).rounded_rectangle(
-        (0, 0, target - 1, target - 1),
-        radius=radius,
-        fill=255,
-    )
-
-    rounded = Image.new('RGBA', (target, target), (0, 0, 0, 0))
-    rounded.paste(logo, (0, 0), rmask)
-
-    # Force outside rounded rect fully transparent
-    px = rounded.load()
-    mp = rmask.load()
-    for y in range(target):
-        for x in range(target):
-            if mp[x, y] == 0:
-                px[x, y] = (0, 0, 0, 0)
-
-    canvas = Image.new('RGBA', (out_size, out_size), (0, 0, 0, 0))
-    canvas.paste(rounded, (inset, inset), rounded)
-    canvas.save(dest_path, 'PNG')
-    print(f'Wrote {dest_path.name} ({out_size}x{out_size})')
-
-
-def make_maskable(src_path, dest_path, size=512):
-    """Full-bleed opaque icon for Android maskable purpose."""
-    im = Image.open(src_path).convert('RGBA')
-    minx, miny, maxx, maxy = content_bbox(im)
-    logo = im.crop((minx, miny, maxx + 1, maxy + 1)).resize(
-        (size, size), Image.Resampling.LANCZOS
-    )
-    canvas = Image.new('RGB', (size, size), (255, 255, 255))
-    canvas.paste(logo, (0, 0), logo)
-    canvas.save(dest_path, 'PNG')
-    print(f'Wrote {dest_path.name} (maskable {size}x{size})')
+    logo = im.crop((minx, miny, maxx + 1, maxy + 1)).convert('RGB')
+    fill_white_from_interior(logo)
+    logo = logo.resize((size, size), Image.Resampling.LANCZOS)
+    # Second pass after resize in case of AA white fringes
+    fill_white_from_interior(logo)
+    logo.save(dest_path, 'PNG')
+    print(f'Wrote full-bleed {dest_path.name} ({size}x{size})')
 
 
 def main():
-    src = ICONS / 'icon-512.png'
-    bak = ICONS / 'icon-512.original.png'
-    if not bak.exists():
-        Image.open(src).save(bak)
-        print(f'Backed up original to {bak.name}')
-
-    source = bak if bak.exists() else src
-    make_transparent(source, ICONS / 'icon-512.png', 512)
-    make_transparent(source, ICONS / 'icon-192.png', 192)
-    make_transparent(source, ICONS / 'apple-touch-icon.png', 180)
-    make_maskable(source, ICONS / 'icon-512-maskable.png', 512)
+    source = ICONS / 'icon-512.original.png'
+    if not source.exists():
+        raise SystemExit('Missing icon-512.original.png backup')
+    make_full_bleed(source, ICONS / 'icon-512.png', 512)
+    make_full_bleed(source, ICONS / 'icon-192.png', 192)
+    make_full_bleed(source, ICONS / 'apple-touch-icon.png', 180)
+    make_full_bleed(source, ICONS / 'icon-512-maskable.png', 512)
 
 
 if __name__ == '__main__':
