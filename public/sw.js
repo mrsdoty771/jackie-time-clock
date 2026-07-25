@@ -3,7 +3,7 @@
 // HTML always comes from the network when online so updates (like password eyes) show up.
 // Other assets use network-first with cache fallback.
 
-const CACHE_NAME = 'mvc-timeclock-v21';
+const CACHE_NAME = 'mvc-timeclock-v22';
 const APP_SHELL = [
   '/manifest.json',
   '/icons/icon-192.png',
