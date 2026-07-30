@@ -297,7 +297,10 @@ async function createPunch(req, res) {
       approvalStatus: 'none',
     });
 
-    if (user.role === 'employee') {
+    const isEmployeePunch = user.role === 'employee';
+    const isManagerSelfPunch =
+      (user.role === 'manager' || user.role === 'super-admin') && !employee_id;
+    if (isEmployeePunch || isManagerSelfPunch) {
       sendPunchNotification(emp.name, punch_type, punch.punchTime, companyId);
     }
 

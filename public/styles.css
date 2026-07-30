@@ -789,6 +789,61 @@ body.has-window-controls-overlay {
 
 .btn-primary { background: #667eea; color: white; width: 100%; }
 .btn-success { background: #28a745; color: white; width: 100%; }
+/* Punch notification recipients: Name | Phone # | Delete */
+.notify-recipients {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.notify-recipients-head,
+.notify-recipient-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 100px;
+    gap: 8px;
+    align-items: center;
+}
+
+.notify-recipients-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 6px;
+}
+
+.notify-recipient-row {
+    margin-bottom: 8px;
+}
+
+.notify-recipient-row input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.notify-recipients-empty {
+    color: #666;
+    font-size: 13px;
+    margin: 0 0 10px 0;
+}
+
+@media (max-width: 600px) {
+    .notify-recipients-head {
+        display: none;
+    }
+    .notify-recipient-row {
+        grid-template-columns: 1fr;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e6e6e6;
+    }
+}
+
 .btn-danger { background: #dc3545; color: white; width: 100%; }
 .btn-warning { background: #ffc107; color: #333; width: 100%; }
 .btn-info { background: #17a2b8; color: white; width: 100%; }
@@ -1096,6 +1151,36 @@ body.has-window-controls-overlay {
     margin-top: 8px;
     font-size: 14px;
     min-height: 1.25em;
+}
+
+.manager-rights-status-row {
+    margin: 8px 0 0 0;
+}
+
+.manager-rights-status {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.manager-rights-status.is-manager {
+    color: #0b5e2a;
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+.manager-rights-status.is-employee {
+    color: #555;
+    background: #e9ecef;
+    border: 1px solid #dee2e6;
+}
+
+.manager-rights-status-hint {
+    margin: 6px 0 0 0;
+    color: #666;
+    font-size: 13px;
 }
 
 .edit-manager-rights-actions {

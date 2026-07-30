@@ -1302,6 +1302,19 @@ function setupEventListeners() {
         if (hideIcon) hideIcon.style.display = revealed ? '' : 'none';
     });
 
+    document.getElementById('company-notify-recipient-add')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        addNotifyRecipientRow();
+    });
+
+    document.getElementById('company-notify-recipients-rows')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.notify-recipient-delete');
+        if (!btn) return;
+        e.preventDefault();
+        btn.closest('.notify-recipient-row')?.remove();
+        updateNotifyRecipientsEmptyState();
+    });
+
     setupEditPasswordPlaceholder();
     
     // Employee Status Filter
@@ -2998,10 +3011,17 @@ function populateEditForm(employee) {
     if (managerSectionEl) {
         const empId = String(employee.id || employee._id || '');
         const empIdEsc = empId.replace(/'/g, "\\'");
+        const statusLabel = hasManager
+            ? '<span class="manager-rights-status is-manager">Current: Manager</span>'
+            : '<span class="manager-rights-status is-employee">Current: Employee only</span>';
+        const statusHint = hasManager
+            ? 'They see the manager dashboard when they log in.'
+            : 'They see the time clock only (no manager dashboard).';
         managerSectionEl.innerHTML = `
             <div class="manager-rights-section" style="padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
                 <strong>Manager rights</strong>
-                ${hasManager ? '<p style="margin: 6px 0 0 0; color: #666; font-size: 14px;">Has manager rights. They see the manager dashboard.</p>' : ''}
+                <p class="manager-rights-status-row">${statusLabel}</p>
+                <p class="manager-rights-status-hint">${statusHint}</p>
                 <div class="edit-manager-rights-actions" style="margin-top: 10px;">
                     <button type="button" class="btn btn-primary btn-small" onclick="openGrantManagerModalFromEditModal('${empIdEsc}')" ${hasManager ? 'disabled' : ''}>Grant manager rights</button>
                     <button type="button" class="btn btn-danger btn-small" onclick="revokeManagerRightsFromEditModal('${empIdEsc}')" ${!hasManager ? 'disabled' : ''}>Take away manager rights</button>
@@ -4218,18 +4238,62 @@ function loadCompanySettings() {
         });
 }
 
+/** Add one Name + Phone row to the punch notification list. */
+function addNotifyRecipientRow(name = '', phone = '') {
+    const rowsEl = document.getElementById('company-notify-recipients-rows');
+    if (!rowsEl) return;
+    const row = document.createElement('div');
+    row.className = 'notify-recipient-row';
+    row.innerHTML = `
+        <input type="text" class="notify-recipient-name" placeholder="Name" autocomplete="off">
+        <input type="tel" class="notify-recipient-phone" placeholder="9415551234" autocomplete="off">
+        <button type="button" class="btn btn-danger btn-small notify-recipient-delete">Delete</button>
+    `;
+    row.querySelector('.notify-recipient-name').value = name || '';
+    row.querySelector('.notify-recipient-phone').value = phone || '';
+    rowsEl.appendChild(row);
+    updateNotifyRecipientsEmptyState();
+}
+
+function updateNotifyRecipientsEmptyState() {
+    const rowsEl = document.getElementById('company-notify-recipients-rows');
+    const emptyEl = document.getElementById('company-notify-recipients-empty');
+    if (!rowsEl || !emptyEl) return;
+    emptyEl.classList.toggle('hidden', rowsEl.children.length > 0);
+}
+
+function renderNotifyRecipients(recipients) {
+    const rowsEl = document.getElementById('company-notify-recipients-rows');
+    if (!rowsEl) return;
+    rowsEl.innerHTML = '';
+    (Array.isArray(recipients) ? recipients : []).forEach((r) => {
+        addNotifyRecipientRow(r?.name || '', r?.phone || '');
+    });
+    updateNotifyRecipientsEmptyState();
+}
+
+function collectNotifyRecipients() {
+    const rowsEl = document.getElementById('company-notify-recipients-rows');
+    if (!rowsEl) return [];
+    return Array.from(rowsEl.querySelectorAll('.notify-recipient-row'))
+        .map((row) => ({
+            name: row.querySelector('.notify-recipient-name')?.value?.trim() || '',
+            phone: row.querySelector('.notify-recipient-phone')?.value?.trim() || '',
+        }))
+        .filter((r) => r.name || r.phone);
+}
+
 function applyCompanyTwilioFromSettings(data) {
     const sidEl = document.getElementById('company-twilio-account-sid');
     const tokenEl = document.getElementById('company-twilio-auth-token');
     const fromEl = document.getElementById('company-twilio-phone-number');
-    const notifyEl = document.getElementById('company-twilio-notify-phone');
     const baseUrlEl = document.getElementById('company-public-base-url');
     const statusEl = document.getElementById('company-twilio-status');
     const hintEl = document.getElementById('company-twilio-auth-token-hint');
     if (!sidEl && !statusEl) return;
     if (data.twilio_account_sid !== undefined && sidEl) sidEl.value = data.twilio_account_sid || '';
     if (data.twilio_phone_number !== undefined && fromEl) fromEl.value = data.twilio_phone_number || '';
-    if (data.twilio_notify_phone !== undefined && notifyEl) notifyEl.value = data.twilio_notify_phone || '';
+    if (data.twilio_notify_recipients !== undefined) renderNotifyRecipients(data.twilio_notify_recipients);
     if (data.public_base_url !== undefined && baseUrlEl) baseUrlEl.value = data.public_base_url || '';
     if (tokenEl) tokenEl.value = '';
     const tokenConfigured = !!data.twilio_auth_token_configured;
@@ -4466,7 +4530,7 @@ function handleCompanySettings(e) {
     const twilioAccountSid = document.getElementById('company-twilio-account-sid')?.value?.trim() || '';
     const twilioAuthToken = document.getElementById('company-twilio-auth-token')?.value?.trim() || '';
     const twilioPhoneNumber = document.getElementById('company-twilio-phone-number')?.value?.trim() || '';
-    const twilioNotifyPhone = document.getElementById('company-twilio-notify-phone')?.value?.trim() || '';
+    const twilioNotifyRecipients = collectNotifyRecipients();
     const publicBaseUrl = document.getElementById('company-public-base-url')?.value?.trim() || '';
     const messageDiv = document.getElementById('company-settings-message');
     if (!companyName) {
@@ -4485,7 +4549,7 @@ function handleCompanySettings(e) {
             pay_week_end_day: Number.isNaN(payWeekEnd) ? 0 : payWeekEnd,
             twilio_account_sid: twilioAccountSid,
             twilio_phone_number: twilioPhoneNumber,
-            twilio_notify_phone: twilioNotifyPhone,
+            twilio_notify_recipients: twilioNotifyRecipients,
             public_base_url: publicBaseUrl,
             ...(twilioAuthToken ? { twilio_auth_token: twilioAuthToken } : {}),
         }),

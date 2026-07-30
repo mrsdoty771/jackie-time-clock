@@ -14,11 +14,13 @@ function env(name) {
 }
 
 function getEnvTwilioConfig() {
+  const to = env('TWILIO_NOTIFY_PHONE');
   return {
     accountSid: env('TWILIO_ACCOUNT_SID'),
     authToken: env('TWILIO_AUTH_TOKEN'),
     fromNumber: env('TWILIO_PHONE_NUMBER'),
-    toNumber: env('TWILIO_NOTIFY_PHONE'),
+    toNumber: to,
+    toNumbers: to ? [{ name: '', phone: to }] : [],
   };
 }
 
@@ -28,8 +30,30 @@ function trimField(v) {
 }
 
 /**
+ * Punch-notification recipients, newest shape first: the recipients list, then the
+ * legacy single number, then env. Duplicate phones are dropped.
+ * @returns {Array<{ name: string, phone: string }>}
+ */
+function resolveNotifyRecipients(settings, envCfg) {
+  const rows = Array.isArray(settings?.twilioNotifyRecipients) ? settings.twilioNotifyRecipients : [];
+  const cleaned = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const phone = trimField(row?.phone);
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    cleaned.push({ name: trimField(row?.name), phone });
+  }
+  if (cleaned.length) return cleaned;
+
+  const legacy = trimField(settings?.twilioNotifyPhone);
+  if (legacy) return [{ name: '', phone: legacy }];
+  return envCfg.toNumbers;
+}
+
+/**
  * @param {string} [companyId]
- * @returns {Promise<{ accountSid: string, authToken: string, fromNumber: string, toNumber: string }>}
+ * @returns {Promise<{ accountSid: string, authToken: string, fromNumber: string, toNumber: string, toNumbers: Array<{ name: string, phone: string }> }>}
  */
 async function getTwilioConfig(companyId) {
   const envCfg = getEnvTwilioConfig();
@@ -37,7 +61,7 @@ async function getTwilioConfig(companyId) {
   if (!cid) return envCfg;
 
   const settings = await CompanySettings.findOne({ companyId: cid })
-    .select('twilioAccountSid twilioAuthTokenEncrypted twilioPhoneNumber twilioNotifyPhone')
+    .select('twilioAccountSid twilioAuthTokenEncrypted twilioPhoneNumber twilioNotifyPhone twilioNotifyRecipients')
     .lean();
   if (!settings) return envCfg;
 
@@ -50,11 +74,13 @@ async function getTwilioConfig(companyId) {
     }
   }
 
+  const toNumbers = resolveNotifyRecipients(settings, envCfg);
   return {
     accountSid: trimField(settings.twilioAccountSid) || envCfg.accountSid,
     authToken: authToken || envCfg.authToken,
     fromNumber: trimField(settings.twilioPhoneNumber) || envCfg.fromNumber,
-    toNumber: trimField(settings.twilioNotifyPhone) || envCfg.toNumber,
+    toNumber: toNumbers.length ? toNumbers[0].phone : '',
+    toNumbers,
   };
 }
 
@@ -68,7 +94,8 @@ function missingTwilioCoreVars(cfg) {
 
 function missingPunchNotifyVars(cfg) {
   const missing = missingTwilioCoreVars(cfg);
-  if (!cfg.toNumber) missing.push('TWILIO_NOTIFY_PHONE');
+  const recipients = Array.isArray(cfg.toNumbers) ? cfg.toNumbers : [];
+  if (!recipients.length && !cfg.toNumber) missing.push('TWILIO_NOTIFY_PHONE');
   return missing;
 }
 

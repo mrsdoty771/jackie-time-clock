@@ -15,7 +15,19 @@ const CompanySettingsSchema = new mongoose.Schema(
     twilioAccountSid: { type: String, default: null, trim: true },
     twilioAuthTokenEncrypted: { type: String, default: null },
     twilioPhoneNumber: { type: String, default: null, trim: true },
+    /** Legacy single punch-notification number; superseded by twilioNotifyRecipients. */
     twilioNotifyPhone: { type: String, default: null, trim: true },
+    /** Everyone who gets a text when an employee punches. Name is a label only. */
+    twilioNotifyRecipients: {
+      type: [
+        {
+          _id: false,
+          name: { type: String, default: '', trim: true },
+          phone: { type: String, default: '', trim: true },
+        },
+      ],
+      default: [],
+    },
     /** Public HTTPS URL for login invite links in SMS (overrides BASE_URL env when set). */
     publicBaseUrl: { type: String, default: null, trim: true },
   },

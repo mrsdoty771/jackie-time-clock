@@ -18,12 +18,55 @@ function trimUrl(raw) {
   return String(raw || '').trim().replace(/\/+$/, '');
 }
 
+/**
+ * Punch-notification rows for the manager UI. Companies saved before the list
+ * existed still have a single legacy number; surface it as the first row.
+ */
+function notifyRecipientsForResponse(settings) {
+  const rows = Array.isArray(settings?.twilioNotifyRecipients) ? settings.twilioNotifyRecipients : [];
+  const cleaned = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const phone = String(row?.phone || '').trim();
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    cleaned.push({ name: String(row?.name || '').trim(), phone });
+  }
+  if (cleaned.length) return cleaned;
+
+  const legacy = String(settings?.twilioNotifyPhone || '').trim();
+  return legacy ? [{ name: '', phone: legacy }] : [];
+}
+
+function parseNotifyRecipients(raw) {
+  if (!Array.isArray(raw)) return { error: 'Punch notification recipients must be a list.' };
+  const cleaned = [];
+  const seen = new Set();
+  for (const row of raw) {
+    const name = String(row?.name || '').trim();
+    const phone = String(row?.phone || '').trim();
+    if (!phone) {
+      if (name) return { error: `Enter a phone number for "${name}", or remove that row.` };
+      continue;
+    }
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      return { error: `"${phone}" is not a valid phone number. Use a 10-digit US number.` };
+    }
+    if (seen.has(digits)) continue;
+    seen.add(digits);
+    cleaned.push({ name, phone });
+  }
+  return { recipients: cleaned };
+}
+
 function twilioFieldsForResponse(settings) {
   if (!settings) {
     return {
       twilio_account_sid: '',
       twilio_phone_number: '',
       twilio_notify_phone: '',
+      twilio_notify_recipients: [],
       twilio_auth_token_configured: false,
       twilio_sms_configured: false,
       public_base_url: '',
@@ -37,6 +80,7 @@ function twilioFieldsForResponse(settings) {
     twilio_account_sid: sid,
     twilio_phone_number: from,
     twilio_notify_phone: settings.twilioNotifyPhone ? String(settings.twilioNotifyPhone).trim() : '',
+    twilio_notify_recipients: notifyRecipientsForResponse(settings),
     twilio_auth_token_configured: tokenConfigured,
     twilio_sms_configured: coreConfigured,
     public_base_url: settings.publicBaseUrl ? trimUrl(settings.publicBaseUrl) : '',
@@ -121,6 +165,7 @@ async function updateCompanySettings(req, res) {
     twilio_auth_token,
     twilio_phone_number,
     twilio_notify_phone,
+    twilio_notify_recipients,
     public_base_url,
   } = req.body;
   if (!company_name || String(company_name).trim().length === 0) {
@@ -186,7 +231,14 @@ async function updateCompanySettings(req, res) {
       const from = String(twilio_phone_number || '').trim();
       update.twilioPhoneNumber = from.length > 0 ? from : null;
     }
-    if (twilio_notify_phone !== undefined) {
+    if (twilio_notify_recipients !== undefined) {
+      const parsed = parseNotifyRecipients(twilio_notify_recipients);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      update.twilioNotifyRecipients = parsed.recipients;
+      // The list is now the source of truth; drop the legacy single number so
+      // nobody gets texted twice.
+      update.twilioNotifyPhone = null;
+    } else if (twilio_notify_phone !== undefined) {
       const notify = String(twilio_notify_phone || '').trim();
       update.twilioNotifyPhone = notify.length > 0 ? notify : null;
     }

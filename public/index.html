@@ -689,9 +689,18 @@
                         <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">E.164 format (e.g. +15551234567). Used as the sender for login texts and punch alerts.</small>
                     </div>
                     <div class="form-group">
-                        <label for="company-twilio-notify-phone">Punch notification phone (optional)</label>
-                        <input type="text" id="company-twilio-notify-phone" placeholder="+15559876543" autocomplete="off">
-                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">Receives SMS when employees clock in/out or take lunch. Not used for employee login texts.</small>
+                        <label>Punch notification recipients (optional)</label>
+                        <div class="notify-recipients">
+                            <div class="notify-recipients-head">
+                                <span>Name</span>
+                                <span>Phone #</span>
+                                <span></span>
+                            </div>
+                            <div id="company-notify-recipients-rows"></div>
+                            <p id="company-notify-recipients-empty" class="notify-recipients-empty hidden">No one is set up yet. Click Add to text someone when employees punch.</p>
+                            <button type="button" class="btn btn-secondary btn-small" id="company-notify-recipient-add">Add</button>
+                        </div>
+                        <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">Everyone listed gets an SMS when employees clock in/out or take lunch. Not used for employee login texts.</small>
                     </div>
                     <div class="form-group">
                         <label for="company-public-base-url">Public app URL</label>

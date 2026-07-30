@@ -62,6 +62,7 @@ function logTwilioConfigOnStartup() {
     );
     if (punchMissing.length === 0) {
       console.log('[Twilio] Punch notifications enabled (notify', cfg.toNumber, ').');
+      console.log('[Twilio] Add more punch-notification recipients in Company Settings.');
     } else {
       console.warn(
         '[Twilio] Punch notifications disabled (env) — missing:',
@@ -81,8 +82,8 @@ function logTwilioConfigOnStartup() {
 }
 
 /**
- * Send an SMS when someone punches (clock in, clock out, lunch in, lunch out).
- * Fire-and-forget: does not throw; logs errors.
+ * Send an SMS to every punch-notification recipient (clock in, clock out, lunch in, lunch out).
+ * Fire-and-forget: does not throw; logs errors per recipient.
  * @param {string} companyId
  */
 async function sendPunchNotification(employeeName, punchType, punchTime, companyId) {
@@ -99,25 +100,34 @@ async function sendPunchNotification(employeeName, punchType, punchTime, company
   const name = String(employeeName || 'Employee').trim() || 'Employee';
   const body = `${name} ${label} at ${timeStr}.`;
 
+  const recipients = Array.isArray(cfg.toNumbers) && cfg.toNumbers.length
+    ? cfg.toNumbers
+    : [{ name: '', phone: cfg.toNumber }];
+
   const client = twilio(cfg.accountSid, cfg.authToken);
-  client.messages
-    .create({
-      body,
-      from: cfg.fromNumber,
-      to: cfg.toNumber,
-    })
-    .then(() => {
-      console.log('SMS sent to', cfg.toNumber, ':', body);
-    })
-    .catch((err) => {
-      const msg = err.message || err.code || String(err);
-      console.error('Twilio SMS error:', msg);
-      if (msg.toLowerCase().includes('authenticate') || err.code === 20003) {
-        console.error(
-          'Twilio auth failed: verify Account SID and Auth Token in Company Settings or TWILIO_* env vars. https://console.twilio.com'
-        );
-      }
-    });
+  recipients.forEach((recipient) => {
+    const raw = recipient && recipient.phone ? String(recipient.phone).trim() : '';
+    if (!raw) return;
+    const to = normalizePhoneToE164(raw) || raw;
+    client.messages
+      .create({
+        body,
+        from: cfg.fromNumber,
+        to,
+      })
+      .then(() => {
+        console.log('SMS sent to', recipient.name ? `${recipient.name} (${to})` : to, ':', body);
+      })
+      .catch((err) => {
+        const msg = err.message || err.code || String(err);
+        console.error('Twilio SMS error for', to, ':', msg);
+        if (msg.toLowerCase().includes('authenticate') || err.code === 20003) {
+          console.error(
+            'Twilio auth failed: verify Account SID and Auth Token in Company Settings or TWILIO_* env vars. https://console.twilio.com'
+          );
+        }
+      });
+  });
 }
 
 /**
