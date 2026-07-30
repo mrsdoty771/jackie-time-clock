@@ -2227,7 +2227,13 @@ function loadMyClockState() {
 function loadMyClockPunches() {
     const effectiveEmployeeId = currentUser?.employee_id || myClockAdminEmployeeId;
     if (!effectiveEmployeeId) return;
-    const url = `${API_BASE}/punches?employee_id=${encodeURIComponent(effectiveEmployeeId)}`;
+    const { startDate, endDate } = getPayWeekLocalDateRangeInTz(0);
+    const params = new URLSearchParams({
+        employee_id: effectiveEmployeeId,
+        start_date: startDate,
+        end_date: endDate,
+    });
+    const url = `${API_BASE}/punches?${params.toString()}`;
     fetch(url, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
@@ -2275,7 +2281,7 @@ function displayMyClockRecords(records) {
     const container = document.getElementById('my-clock-records');
     if (!container) return;
     if (!records || records.length === 0) {
-        container.innerHTML = '<p>No punches yet.</p>';
+        container.innerHTML = '<p>No punches this week.</p>';
         return;
     }
     const slice = records.slice(0, 30);

@@ -1242,6 +1242,13 @@ body.has-window-controls-overlay {
     color: #000;
 }
 
+#terminate-employee-modal .form-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 8px;
+}
+
 #add-employee-form .form-actions {
     display: flex;
     gap: 16px;
